@@ -1434,17 +1434,16 @@
 
     const PATH_LESSONS = "lessons";
 
-    const LESSONS = [
-      { key:"k1",  label:"課1" },
-      { key:"k2",  label:"課2" },
-      { key:"k3",  label:"課3" },
-      { key:"k4",  label:"課4" },
-      { key:"k5",  label:"課5" },
-      { key:"k6",  label:"課6" },
-      { key:"k7",  label:"課7" },
-      { key:"k8",  label:"課8" },
-      { key:"k9",  label:"課9" },
-      { key:"k10", label:"課10" }
+    const LESSONS = Array.from({ length: 15 }, (_, i) => ({
+      key: `k${i+1}`,
+      label: `L${i+1}`
+    }));
+
+    const LESSON_GROUPS = [
+      { key: "g1", label: "Ⅰ", lessonKeys: ["k1","k2","k3","k4","k5","k6","k7"] },
+      { key: "g2", label: "Ⅱ", lessonKeys: ["k8","k9","k10","k11","k12","k13","k14","k15"] },
+      { key: "g3", label: "Ⅲ", lessonKeys: ["k1","k2","k3","k4","k5","k6","k7"] },
+      { key: "g4", label: "Ⅳ", lessonKeys: ["k8","k9","k10","k11","k12","k13","k14","k15"] }
     ];
 
     const $ = (s)=>document.querySelector(s);
@@ -1591,7 +1590,8 @@
     let db = null;
     let currentUser = null;
 
-    let currentLessonKey = LESSONS[0]?.key || "k1";
+    let currentLessonKey = "";
+    let currentGroupKey = "";
     let lessonItems = [];
     let currentItem = null;
     let currentIndex = -1;
@@ -1755,28 +1755,76 @@
       }
     }
 
-    function buildLessonUI(){
-      lessonRow.innerHTML = LESSONS.map(l => `
-        <button class="lessonBtn" data-lesson="${escapeHtml(l.key)}">${escapeHtml(l.label)}</button>
-      `).join("");
+    function getGroupByKey(groupKey){
+      return LESSON_GROUPS.find(g => g.key === groupKey) || LESSON_GROUPS[0] || null;
+    }
 
+    function getGroupByLesson(lessonKey){
+      return LESSON_GROUPS.find(g => (g.lessonKeys || []).includes(lessonKey)) || LESSON_GROUPS[0] || null;
+    }
+
+    function buildGroupButtons(){
+      const activeGroup = getGroupByKey(currentGroupKey);
+      const activeGroupKey = activeGroup?.key || "";
+      return LESSON_GROUPS.map(g => `
+        <button class="lessonBtn ${g.key===activeGroupKey ? "active" : ""}" data-group="${escapeHtml(g.key)}">${escapeHtml(g.label)}</button>
+      `).join("");
+    }
+
+    function buildLessonButtonsForGroup(groupKey){
+      const group = getGroupByKey(groupKey);
+      if(!group) return "";
+      return (group.lessonKeys || []).map(key => {
+        const lesson = LESSONS.find(x=>x.key===key);
+        if(!lesson) return "";
+        const active = key === currentLessonKey;
+        return `<button class="lessonBtn ${active ? "active" : ""}" data-lesson="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</button>`;
+      }).join("");
+    }
+
+    function renderLessonBar(){
+      lessonRow.innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${buildGroupButtons()}</div>
+        <div style="width:100%;height:0"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${buildLessonButtonsForGroup(currentGroupKey)}</div>
+      `;
+    }
+
+    function setGroup(groupKey){
+      const group = getGroupByKey(groupKey);
+      if(!group) return;
+      currentGroupKey = group.key;
+      currentLessonKey = "";
+      renderLessonBar();
+      hideTalk();
+      currentItem = null;
+      currentIndex = -1;
+      lessonItems = [];
+      renderStageEmpty("", "");
+      try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
+    }
+
+    function buildLessonUI(){
       const opts = LESSONS.map(l => `<option value="${escapeHtml(l.key)}">${escapeHtml(l.label)}</option>`).join("");
       adminLesson.innerHTML = opts;
       listLesson.innerHTML = opts;
       spLesson.innerHTML = opts;
 
-      setLesson(currentLessonKey, true);
-      adminLesson.value = currentLessonKey;
-      listLesson.value = currentLessonKey;
-      spLesson.value = currentLessonKey;
+      renderLessonBar();
+
+      const firstLesson = LESSONS[0]?.key || "k1";
+      adminLesson.value = currentLessonKey || firstLesson;
+      listLesson.value = currentLessonKey || firstLesson;
+      spLesson.value = currentLessonKey || firstLesson;
     }
 
     function setLesson(key, silent){
+      if(!key) return;
+      const group = getGroupByLesson(key);
+      currentGroupKey = group?.key || currentGroupKey;
       currentLessonKey = key;
 
-      [...lessonRow.querySelectorAll(".lessonBtn")].forEach(b=>{
-        b.classList.toggle("active", b.getAttribute("data-lesson") === key);
-      });
+      renderLessonBar();
 
       hideTalk();
       currentItem = null;
@@ -1797,8 +1845,8 @@
       try{
         const v = localStorage.getItem("lessonCards:lastLesson");
         if(v && LESSONS.some(x=>x.key===v)) return v;
-      }catch(_){}
-      return LESSONS[0]?.key || "k1";
+      }catch(_){ }
+      return "";
     }
 
     function getCssNumber(varName, fallback){
@@ -2028,9 +2076,10 @@
     // =========================
     // Viewer stage render (3 slots)
     // =========================
-    function renderStageEmpty(msg){
+    function renderStageEmpty(msg, subMsg){
       placeholder.classList.remove("hidden");
-      placeholder.querySelector(".t").textContent = msg || "課を選択してください";
+      placeholder.querySelector(".t").textContent = msg || "";
+      placeholder.querySelector(".s").textContent = subMsg || "";
 
       slotPrev.innerHTML = "";
       slotCur.innerHTML  = "";
@@ -3607,15 +3656,22 @@
           updateAuthUI();
 
           if(!isAdminSignedIn()){
-            loadLessonItemsForViewer(currentLessonKey);
+            if(currentLessonKey) loadLessonItemsForViewer(currentLessonKey);
+            else renderStageEmpty("", "");
             return;
           }
           loadAdminList();
         });
 
-        currentLessonKey = loadLastLesson();
+        const lastLesson = loadLastLesson();
+        currentLessonKey = lastLesson || "";
+        currentGroupKey = getGroupByLesson(currentLessonKey)?.key || LESSON_GROUPS[0]?.key || "g1";
         buildLessonUI();
-        loadLessonItemsForViewer(currentLessonKey);
+        if(currentLessonKey){
+          loadLessonItemsForViewer(currentLessonKey);
+        }else{
+          renderStageEmpty("", "");
+        }
 
       }catch(err){
         renderStageEmpty("Firebase初期化エラー");
@@ -3674,7 +3730,14 @@
     authPass.addEventListener("keydown", (e)=>{ if(e.key==="Enter") doAuth(); });
 
     lessonRow.addEventListener("click", (e)=>{
-      const b = e.target.closest(".lessonBtn");
+      const g = e.target.closest("[data-group]");
+      if(g){
+        const groupKey = g.getAttribute("data-group") || "";
+        setGroup(groupKey);
+        return;
+      }
+
+      const b = e.target.closest("[data-lesson]");
       if(!b) return;
       const key = b.getAttribute("data-lesson");
       if(!key) return;
