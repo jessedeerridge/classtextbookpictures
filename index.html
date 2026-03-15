@@ -135,6 +135,14 @@
       position:relative;
     }
 
+    .stageWrap{
+      width: var(--cardW);
+      display:flex;
+      flex-direction:column;
+      align-items:stretch;
+      gap:8px;
+    }
+
     .stage{
       width: var(--cardW);
       height: var(--cardH);
@@ -360,14 +368,12 @@
     }
 
     .stageIndexBar{
-      position:absolute;
-      left:10px;
-      right:10px;
-      top:10px;
-      z-index:7;
+      width:100%;
+      min-height:24px;
       display:flex;
       flex-wrap:wrap;
       gap:6px;
+      justify-content:center;
       pointer-events:auto;
     }
     .idxBtn{
@@ -1144,29 +1150,31 @@
   <div class="app">
     <!-- 非ログイン時（閲覧側） -->
     <div class="viewer" id="viewer">
-      <div class="stage" id="stage" aria-label="image-stage">
-        <div class="reel" id="reel">
-          <div class="slot" id="slotPrev"></div>
-          <div class="slot" id="slotCur"></div>
-          <div class="slot" id="slotNext"></div>
-        </div>
-
-        <div class="overlayLayer" id="viewerOverlay"></div>
-
-        <div class="placeholder" id="placeholder">
-          <div class="t">課を選択してください</div>
-          <div class="s">下の「課」ボタンで切り替え。<br>横スワイプで高速ループ。<br>画像カードは長押し中だけ会話。<br>スペシャルカードは常時会話表示。<br>連結カードは画像が横並び表示。</div>
-        </div>
-
-        <div class="firstLine" id="firstLine">
-          <div class="firstLineBox" id="firstLineBox"><div id="firstLineText">（未登録）</div></div>
-        </div>
-
+      <div class="stageWrap">
         <div class="stageIndexBar" id="stageIndexBar"></div>
 
-        <div class="shield" id="shield">
-          <div class="talk" id="talkBox">
-            <div id="talkText">(未登録)</div>
+        <div class="stage" id="stage" aria-label="image-stage">
+          <div class="reel" id="reel">
+            <div class="slot" id="slotPrev"></div>
+            <div class="slot" id="slotCur"></div>
+            <div class="slot" id="slotNext"></div>
+          </div>
+
+          <div class="overlayLayer" id="viewerOverlay"></div>
+
+          <div class="placeholder" id="placeholder">
+            <div class="t">課を選択してください</div>
+            <div class="s">下の「課」ボタンで切り替え。<br>横スワイプで高速ループ。<br>画像カードは長押し中だけ会話。<br>スペシャルカードは常時会話表示。<br>連結カードは画像が横並び表示。</div>
+          </div>
+
+          <div class="firstLine" id="firstLine">
+            <div class="firstLineBox" id="firstLineBox"><div id="firstLineText">（未登録）</div></div>
+          </div>
+
+          <div class="shield" id="shield">
+            <div class="talk" id="talkBox">
+              <div id="talkText">(未登録)</div>
+            </div>
           </div>
         </div>
       </div>
