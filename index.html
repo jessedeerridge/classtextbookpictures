@@ -359,6 +359,38 @@
       box-shadow: 0 14px 40px rgba(0,0,0,.12) !important;
     }
 
+    .stageIndexBar{
+      position:absolute;
+      left:10px;
+      right:10px;
+      top:10px;
+      z-index:7;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      pointer-events:auto;
+    }
+    .idxBtn{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.22);
+      background: rgba(8,12,18,.58);
+      color: rgba(232,238,247,.95);
+      border-radius:999px;
+      min-width:28px;
+      height:24px;
+      padding:0 8px;
+      font-size:11px;
+      font-weight:900;
+      line-height:1;
+      cursor:pointer;
+      backdrop-filter: blur(8px);
+    }
+    .idxBtn.active{
+      border-color: rgba(79,124,255,.55);
+      background: rgba(79,124,255,.30);
+      color:#fff;
+      box-shadow: 0 0 0 2px rgba(79,124,255,.20) inset;
+    }
     .shield{ display:none !important; }
 
     .blueu{
@@ -1130,6 +1162,8 @@
           <div class="firstLineBox" id="firstLineBox"><div id="firstLineText">（未登録）</div></div>
         </div>
 
+        <div class="stageIndexBar" id="stageIndexBar"></div>
+
         <div class="shield" id="shield">
           <div class="talk" id="talkBox">
             <div id="talkText">(未登録)</div>
@@ -1464,6 +1498,7 @@
     const reel = $("#reel");
     const placeholder = $("#placeholder");
     const viewerOverlay = $("#viewerOverlay");
+    const stageIndexBar = $("#stageIndexBar");
 
     // firstLine
     const firstLine = $("#firstLine");
@@ -2086,6 +2121,7 @@
       slotNext.innerHTML = "";
 
       viewerOverlay.innerHTML = "";
+      if(stageIndexBar) stageIndexBar.innerHTML = "";
       updateFirstLine(null);
 
       setSlotX(slotPrev, -100);
@@ -2137,6 +2173,27 @@
       el.style.transform = `translate3d(${percent}%,0,0)`;
     }
 
+    function renderStageIndexBar(){
+      if(!stageIndexBar) return;
+      if(!lessonItems.length){
+        stageIndexBar.innerHTML = "";
+        return;
+      }
+      stageIndexBar.innerHTML = lessonItems.map((it, i)=>{
+        const active = currentItem && currentItem.id === it.id;
+        return `<button class="idxBtn ${active ? "active" : ""}" data-item-index="${i}" aria-label="画像${i+1}">${i+1}</button>`;
+      }).join("");
+    }
+
+    async function jumpToItemByIndex(idx){
+      const n = lessonItems.length;
+      if(!Number.isInteger(idx) || idx < 0 || idx >= n) return;
+      const item = lessonItems[idx];
+      if(!item) return;
+      await preloadItemImage(item);
+      showOneItemInstant(item);
+    }
+
     function showOneItemInstant(item){
       placeholder.classList.toggle("hidden", !!item);
       if(!item){
@@ -2144,6 +2201,7 @@
         slotCur.innerHTML  = "";
         slotNext.innerHTML = "";
         viewerOverlay.innerHTML = "";
+        if(stageIndexBar) stageIndexBar.innerHTML = "";
         updateFirstLine(null);
         currentItem = null;
         currentIndex = -1;
@@ -2155,6 +2213,7 @@
       setSlotContent(slotCur, item);
       renderViewerOverlays(item);
       updateFirstLine(item);
+      renderStageIndexBar();
 
       slotPrev.style.transition = "none";
       slotCur.style.transition = "none";
@@ -3728,6 +3787,17 @@
     authModal.addEventListener("click", (e)=>{ if(e.target===authModal) showAuthModal(false); });
     btnAuthDo.addEventListener("click", doAuth);
     authPass.addEventListener("keydown", (e)=>{ if(e.key==="Enter") doAuth(); });
+
+    stageIndexBar.addEventListener("pointerdown", (e)=>{
+      e.stopPropagation();
+    });
+    stageIndexBar.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      const b = e.target.closest("[data-item-index]");
+      if(!b) return;
+      const idx = Number(b.getAttribute("data-item-index"));
+      jumpToItemByIndex(idx);
+    });
 
     lessonRow.addEventListener("click", (e)=>{
       const g = e.target.closest("[data-group]");
