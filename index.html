@@ -572,6 +572,8 @@
     }
     .card.dragging{ opacity:.55; }
     .card.dropHint{ outline: 3px solid rgba(79,124,255,.35); }
+    .card.dropHintTop{ box-shadow: inset 0 4px 0 rgba(215,121,67,.85); }
+    .card.dropHintBottom{ box-shadow: inset 0 -4px 0 rgba(215,121,67,.85); }
 
     .thumb{
       aspect-ratio: 4 / 3;
@@ -1716,6 +1718,9 @@
     let selectMode = false;
     const selectedIds = new Set();
     let draggingId = null;
+    let dragOverId = null;
+    let dragInsertAfter = false;
+    let suppressNextCardClick = false;
 
     // =========================
     // Helpers
@@ -3757,6 +3762,8 @@
 
     function clearDropHints(){
       [...listEl.querySelectorAll(".card.dropHint")].forEach(el=>el.classList.remove("dropHint"));
+      [...listEl.querySelectorAll(".card.dropHintTop")].forEach(el=>el.classList.remove("dropHintTop"));
+      [...listEl.querySelectorAll(".card.dropHintBottom")].forEach(el=>el.classList.remove("dropHintBottom"));
       [...listEl.querySelectorAll(".card.dragging")].forEach(el=>el.classList.remove("dragging"));
     }
 
@@ -3986,6 +3993,13 @@
     btnCombine.addEventListener("click", createComboFromSelection);
 
     listEl.addEventListener("click", (e)=>{
+      if(suppressNextCardClick){
+        suppressNextCardClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       const lessonKey = adminLesson.value;
 
       const delBtn = e.target.closest('[data-action="del"]');
@@ -4019,6 +4033,8 @@
       const card = getCardElFromEvent(e);
       if(!card) return;
       draggingId = card.getAttribute("data-id");
+      dragOverId = null;
+      dragInsertAfter = false;
       card.classList.add("dragging");
       try{
         e.dataTransfer.effectAllowed = "move";
@@ -4034,8 +4050,16 @@
       const overId = over.getAttribute("data-id");
       if(!overId || overId === draggingId) return;
 
+      const rect = over.getBoundingClientRect();
+      const y = e.clientY || 0;
+      const after = y > (rect.top + rect.height / 2);
+
+      dragOverId = overId;
+      dragInsertAfter = after;
+
       clearDropHints();
       over.classList.add("dropHint");
+      over.classList.add(after ? "dropHintBottom" : "dropHintTop");
       try{ e.dataTransfer.dropEffect = "move"; }catch(_){}
     });
 
@@ -4049,40 +4073,45 @@
     listEl.addEventListener("drop", async (e)=>{
       if(selectMode) return;
       e.preventDefault();
-      const over = getCardElFromEvent(e);
-      if(!over) return;
 
-      const overId = over.getAttribute("data-id");
       const fromId = draggingId || "";
+      const overId = dragOverId || getCardElFromEvent(e)?.getAttribute("data-id") || "";
       if(!fromId || !overId || fromId === overId) return;
 
       const lessonKey = adminLesson.value;
 
       const arr = [...lastRendered];
       const fromIdx = arr.findIndex(x=>x.id===fromId);
-      const toIdx = arr.findIndex(x=>x.id===overId);
+      let toIdx = arr.findIndex(x=>x.id===overId);
       if(fromIdx<0 || toIdx<0) return;
 
       const [moved] = arr.splice(fromIdx, 1);
-      arr.splice(toIdx, 0, moved);
+      if(fromIdx < toIdx) toIdx -= 1;
+      const insertIdx = dragInsertAfter ? (toIdx + 1) : toIdx;
+      arr.splice(Math.max(0, Math.min(arr.length, insertIdx)), 0, moved);
 
       try{
         setStatus2("並び替え保存中...", null);
         await renumberOrdersAndSave(lessonKey, arr);
         lastRendered = arr;
         renderAdminList(arr);
+        suppressNextCardClick = true;
         setStatus2("並び替え完了 ✅", "ok");
         setTimeout(()=>setStatus2("", null), 900);
       }catch(err){
         setStatus2(err?.message || String(err||""), "err");
       }finally{
         draggingId = null;
+        dragOverId = null;
+        dragInsertAfter = false;
         clearDropHints();
       }
     });
 
     listEl.addEventListener("dragend", ()=>{
       draggingId = null;
+      dragOverId = null;
+      dragInsertAfter = false;
       clearDropHints();
     });
 
