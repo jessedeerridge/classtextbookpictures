@@ -1859,7 +1859,7 @@
         const lesson = LESSONS.find(x=>x.key===key);
         if(!lesson) return "";
         const active = key === currentLessonKey;
-        return `<button class="lessonBtn ${active ? "active" : ""}" data-lesson="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</button>`;
+        return `<button class="lessonBtn ${active ? "active" : ""}" data-lesson="${escapeHtml(lesson.key)}" data-lesson-group="${escapeHtml(group.key)}">${escapeHtml(lesson.label)}</button>`;
       }).join("");
     }
 
@@ -1907,10 +1907,16 @@
       spLesson.value = currentLessonKey || firstLesson;
     }
 
-    function setLesson(key, silent){
+    function setLesson(key, silent, preferredGroupKey){
       if(!key) return;
-      const group = getGroupByLesson(key);
-      currentGroupKey = group?.key || currentGroupKey;
+      const preferredGroup = getGroupByKey(preferredGroupKey || currentGroupKey);
+      const canKeepGroup = !!preferredGroup && (preferredGroup.lessonKeys || []).includes(key);
+      if(canKeepGroup){
+        currentGroupKey = preferredGroup.key;
+      }else{
+        const group = getGroupByLesson(key);
+        currentGroupKey = group?.key || currentGroupKey;
+      }
       currentLessonKey = key;
 
       renderLessonBar();
@@ -3880,8 +3886,9 @@
       const b = e.target.closest("[data-lesson]");
       if(!b) return;
       const key = b.getAttribute("data-lesson");
+      const groupKey = b.getAttribute("data-lesson-group") || currentGroupKey;
       if(!key) return;
-      setLesson(key);
+      setLesson(key, false, groupKey);
     });
 
     stage.addEventListener("pointerdown", onPointerDown);
