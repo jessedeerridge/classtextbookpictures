@@ -12,14 +12,14 @@
 
   <style>
     :root{
-      --bg:#0b0f14;
-      --panel:#111826;
-      --panel2:#0f1724;
-      --text:#e8eef7;
-      --muted:#a8b4c7;
-      --line:rgba(255,255,255,.12);
-      --accent:#4f7cff;
-      --shadow:0 14px 40px rgba(0,0,0,.45);
+      --bg:#feeecd;
+      --panel:#fff9ef;
+      --panel2:#fff4df;
+      --text:#4f3422;
+      --muted:#7a5f4c;
+      --line:rgba(111,71,43,.16);
+      --accent:#d77943;
+      --shadow:0 14px 36px rgba(111,71,43,.22);
       --radius:18px;
 
       --cardW: min(86vw, 440px);
@@ -61,8 +61,8 @@
       margin:0;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
       background:
-        radial-gradient(1200px 800px at 30% 10%, rgba(79,124,255,.18), transparent 60%),
-        radial-gradient(900px 600px at 80% 10%, rgba(122,92,255,.12), transparent 55%),
+        radial-gradient(1200px 800px at 30% 10%, rgba(224,149,96,.22), transparent 60%),
+        radial-gradient(900px 600px at 80% 10%, rgba(245,212,153,.24), transparent 55%),
         var(--bg);
       color:var(--text);
       overflow:hidden;
@@ -71,28 +71,28 @@
     header{
       position:fixed; left:0; right:0; top:0; z-index:50;
       backdrop-filter: blur(10px);
-      background: rgba(10,14,20,.72);
+      background: rgba(255,248,234,.86);
       border-bottom:1px solid var(--line);
     }
     .wrap{max-width:1100px;margin:0 auto;padding:12px 16px}
     .bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
     .brand{font-weight:900;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
-    .brand .dot{width:10px;height:10px;border-radius:999px;background:var(--accent);box-shadow:0 0 18px rgba(79,124,255,.55)}
+    .brand .dot{width:10px;height:10px;border-radius:999px;background:var(--accent);box-shadow:0 0 18px rgba(215,121,67,.45)}
     .auth{display:flex;align-items:center;gap:10px}
     .pill{
       display:flex;align-items:center;gap:10px;
       padding:8px 10px;border:1px solid var(--line);border-radius:999px;
-      background: rgba(255,255,255,.04);
+      background: rgba(255,255,255,.68);
       max-width: 58vw;
     }
     .pill .email{
-      font-size:12px;color:rgba(232,238,247,.85);
+      font-size:12px;color:rgba(79,52,34,.82);
       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34vw;
     }
 
     .btn{
       appearance:none; border:1px solid var(--line);
-      background: rgba(255,255,255,.06);
+      background: rgba(255,255,255,.72);
       color:var(--text);
       padding:9px 12px;border-radius:12px;
       font-weight:900; cursor:pointer;
@@ -100,11 +100,11 @@
       transition: transform .08s ease, background .12s ease, border-color .12s ease;
       user-select:none; -webkit-tap-highlight-color:transparent;
     }
-    .btn:hover{ background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.2); }
+    .btn:hover{ background: rgba(255,255,255,.92); border-color: rgba(111,71,43,.28); }
     .btn:active{ transform: translateY(1px); }
     .btn.primary{
-      border-color: rgba(79,124,255,.35);
-      background: rgba(79,124,255,.16);
+      border-color: rgba(215,121,67,.45);
+      background: rgba(215,121,67,.2);
     }
     .btn.danger{
       border-color: rgba(239,68,68,.35);
@@ -143,12 +143,19 @@
       gap:8px;
     }
 
+    .viewerNoSelect,
+    .viewerNoSelect *{
+      user-select:none;
+      -webkit-user-select:none;
+      -webkit-touch-callout:none;
+    }
+
     .stage{
       width: var(--cardW);
       height: var(--cardH);
       border-radius: 22px;
-      border:1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.04);
+      border:1px solid rgba(111,71,43,.16);
+      background: rgba(255,255,255,.66);
       box-shadow: var(--shadow);
       overflow:hidden;
       position:relative;
@@ -176,7 +183,7 @@
       width:100%;
       display:flex; align-items:center; justify-content:center;
       will-change: transform;
-      background: rgba(0,0,0,.22);
+      background: rgba(255,255,255,.38);
       transform: translate3d(0,0,0);
       backface-visibility: hidden;
       contain: paint;
@@ -193,7 +200,7 @@
       user-select:none;
       -webkit-user-drag:none;
       pointer-events:none;
-      background: rgba(0,0,0,.28);
+      background: rgba(255,255,255,.46);
       transform: translateZ(0);
       backface-visibility: hidden;
     }
@@ -205,13 +212,13 @@
       display:grid;
       grid-template-columns: repeat(var(--comboN, 2), minmax(0, 1fr));
       gap:0;
-      background: rgba(0,0,0,.28);
+      background: rgba(255,255,255,.46);
     }
     .comboStrip .part{
       height:100%;
       position:relative;
       overflow:hidden;
-      background: rgba(0,0,0,.22);
+      background: rgba(255,255,255,.38);
       display:flex;align-items:center;justify-content:center;
       border: none !important; /* ✅ 真ん中の線（border）を出さない */
       outline: none !important;
@@ -219,7 +226,7 @@
     .comboStrip .part img{
       width:100%;height:100%;
       object-fit: contain;
-      background: rgba(0,0,0,.18);
+      background: rgba(255,255,255,.34);
       display:block;
       transform: translateZ(0);
       backface-visibility:hidden;
@@ -410,9 +417,9 @@
     }
     .idxBtn{
       appearance:none;
-      border:1px solid rgba(255,255,255,.22);
-      background: rgba(8,12,18,.58);
-      color: rgba(232,238,247,.95);
+      border:1px solid rgba(111,71,43,.24);
+      background: rgba(255,255,255,.75);
+      color: rgba(79,52,34,.95);
       border-radius:999px;
       min-width:28px;
       height:24px;
@@ -424,10 +431,10 @@
       backdrop-filter: blur(8px);
     }
     .idxBtn.active{
-      border-color: rgba(79,124,255,.55);
-      background: rgba(79,124,255,.30);
-      color:#fff;
-      box-shadow: 0 0 0 2px rgba(79,124,255,.20) inset;
+      border-color: rgba(215,121,67,.72);
+      background: rgba(215,121,67,.26);
+      color:#472d1e;
+      box-shadow: 0 0 0 2px rgba(215,121,67,.22) inset;
     }
     .shield{ display:none !important; }
 
@@ -456,7 +463,7 @@
     .lessonBar{
       position:fixed; left:0; right:0; bottom:0; z-index:40;
       border-top:1px solid var(--line);
-      background: rgba(10,14,20,.80);
+      background: rgba(255,248,234,.9);
       backdrop-filter: blur(10px);
       padding:10px 10px calc(10px + env(safe-area-inset-bottom));
     }
@@ -470,9 +477,9 @@
       align-items:center;
     }
     .lessonBtn{
-      border:1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.06);
-      color: rgba(232,238,247,.9);
+      border:1px solid rgba(111,71,43,.16);
+      background: rgba(255,255,255,.72);
+      color: rgba(79,52,34,.9);
       padding:8px 10px;
       border-radius:999px;
       font-weight:900;
@@ -482,9 +489,9 @@
       -webkit-tap-highlight-color:transparent;
     }
     .lessonBtn.active{
-      border-color: rgba(79,124,255,.45);
-      background: rgba(79,124,255,.18);
-      box-shadow: 0 0 0 3px rgba(79,124,255,.12) inset;
+      border-color: rgba(215,121,67,.52);
+      background: rgba(215,121,67,.24);
+      box-shadow: 0 0 0 3px rgba(215,121,67,.12) inset;
     }
 
     /* ---------- admin screen ---------- */
@@ -572,10 +579,12 @@
     }
     .card.dragging{ opacity:.55; }
     .card.dropHint{ outline: 3px solid rgba(79,124,255,.35); }
+    .card.dropHintTop{ box-shadow: inset 0 4px 0 rgba(215,121,67,.85); }
+    .card.dropHintBottom{ box-shadow: inset 0 -4px 0 rgba(215,121,67,.85); }
 
     .thumb{
       aspect-ratio: 4 / 3;
-      background: rgba(0,0,0,.22);
+      background: rgba(255,255,255,.38);
       border-bottom:1px solid var(--line);
       display:flex;align-items:center;justify-content:center;
       overflow:hidden;
@@ -590,7 +599,7 @@
       user-select:none;
       -webkit-user-drag:none;
       pointer-events:none;
-      background: rgba(0,0,0,.18);
+      background: rgba(255,255,255,.34);
     }
 
     /* ✅ 連結カード：管理サムネも Grid 化（真ん中の線を消す） */
@@ -877,7 +886,7 @@
 
     .qThumb{
       aspect-ratio: 4/3;
-      background: rgba(0,0,0,.22);
+      background: rgba(255,255,255,.38);
       display:flex; align-items:center; justify-content:center;
       overflow:hidden;
     }
@@ -887,7 +896,7 @@
       object-fit: contain;
       object-position:center;
       display:block;
-      background: rgba(0,0,0,.18);
+      background: rgba(255,255,255,.34);
     }
 
     .qMeta{
@@ -922,7 +931,7 @@
     .canvasOuter{
       border:1px solid rgba(255,255,255,.12);
       border-radius:16px;
-      background: rgba(0,0,0,.22);
+      background: rgba(255,255,255,.38);
       overflow:hidden;
       position:relative;
     }
@@ -968,7 +977,7 @@
       pointer-events:none;
       user-select:none;
       -webkit-user-drag:none;
-      background: rgba(0,0,0,.18);
+      background: rgba(255,255,255,.34);
     }
 
     /* ✅ 連結カードのモーダルプレビュー用（画像が正しく出ない問題を修正） */
@@ -1153,7 +1162,7 @@
       pointer-events:none;
       user-select:none;
       -webkit-user-drag:none;
-      background: rgba(0,0,0,.18);
+      background: rgba(255,255,255,.34);
     }
     .talkCanvas .talkOverlayLayer{
       position:absolute; inset:0;
@@ -1686,8 +1695,8 @@
     let isHolding = false;
 
     let pDown = null;
-    const SWIPE_MIN_X = 40;
-    const SWIPE_MAX_Y = 34;
+    const SWIPE_MIN_X = 24;
+    const SWIPE_MAX_Y = 44;
 
     let lastRendered = [];
     let editTarget = null;
@@ -1716,6 +1725,9 @@
     let selectMode = false;
     const selectedIds = new Set();
     let draggingId = null;
+    let dragOverId = null;
+    let dragInsertAfter = false;
+    let suppressNextCardClick = false;
 
     // =========================
     // Helpers
@@ -2320,14 +2332,19 @@
     }
 
     function pickNextItemAvoidSame(){
-      if(!lessonItems.length) return null;
-      if(lessonItems.length === 1) return lessonItems[0];
+      const shuffleCandidates = lessonItems.filter(it => !isSpecialItem(it));
+      if(!shuffleCandidates.length) return null;
+      if(shuffleCandidates.length === 1) return shuffleCandidates[0];
 
-      if(currentIndex < 0 && currentItem?.id){
-        currentIndex = lessonItems.findIndex(x => x.id === currentItem.id);
+      const lastIdx = (currentItem && !isSpecialItem(currentItem))
+        ? shuffleCandidates.findIndex(x => x.id === currentItem.id)
+        : -1;
+
+      let idx = Math.floor(Math.random() * shuffleCandidates.length);
+      if(lastIdx >= 0 && idx === lastIdx){
+        idx = (idx + 1) % shuffleCandidates.length;
       }
-      const idx = pickRandomIndexAvoidSame(currentIndex);
-      return lessonItems[idx] || lessonItems[0];
+      return shuffleCandidates[idx] || shuffleCandidates[0];
     }
 
     async function preloadItemImage(item){
@@ -2400,6 +2417,7 @@
       if(isShuffling) return;
       if(isHolding) return;
       if(!lessonItems.length) return;
+      if(!lessonItems.some(it => !isSpecialItem(it))) return;
 
       isShuffling = true;
       reel.classList.add("shuffling");
@@ -2408,7 +2426,8 @@
       const token = ++shuffleToken;
 
       if(!currentItem){
-        const first = pickNextItemAvoidSame() || lessonItems[0];
+        const first = pickNextItemAvoidSame();
+        if(!first) return;
         showOneItemInstant(first);
         await preloadItemImage(first);
       }
@@ -2470,9 +2489,11 @@
           setSlotX(slotCur, 0);
           setSlotX(slotNext, 100);
 
+          currentItem = nextItem;
+          currentIndex = lessonItems.findIndex(x => x.id === nextItem.id);
+
           if(isLast){
-            currentItem = nextItem;
-            currentIndex = lessonItems.findIndex(x => x.id === nextItem.id);
+            renderStageIndexBar();
             renderViewerOverlays(nextItem);
             updateFirstLine(nextItem);
           }
@@ -2529,6 +2550,9 @@
       if(isAdminSignedIn()) return;
       if(e.pointerType === "mouse" && e.button !== 0) return;
 
+      e.preventDefault();
+      viewer.classList.add("viewerNoSelect");
+
       stage.setPointerCapture?.(e.pointerId);
       pDown = { x: e.clientX, y: e.clientY, t: performance.now() };
 
@@ -2544,6 +2568,7 @@
       }
     }
     function onPointerUp(e){
+      viewer.classList.remove("viewerNoSelect");
       if(!pDown) return;
       const dx = e.clientX - pDown.x;
       const dy = e.clientY - pDown.y;
@@ -2564,6 +2589,7 @@
       pDown = null;
     }
     function onPointerCancel(){
+      viewer.classList.remove("viewerNoSelect");
       if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
       hideTalk();
       pDown = null;
@@ -3748,6 +3774,8 @@
 
     function clearDropHints(){
       [...listEl.querySelectorAll(".card.dropHint")].forEach(el=>el.classList.remove("dropHint"));
+      [...listEl.querySelectorAll(".card.dropHintTop")].forEach(el=>el.classList.remove("dropHintTop"));
+      [...listEl.querySelectorAll(".card.dropHintBottom")].forEach(el=>el.classList.remove("dropHintBottom"));
       [...listEl.querySelectorAll(".card.dragging")].forEach(el=>el.classList.remove("dragging"));
     }
 
@@ -3977,6 +4005,13 @@
     btnCombine.addEventListener("click", createComboFromSelection);
 
     listEl.addEventListener("click", (e)=>{
+      if(suppressNextCardClick){
+        suppressNextCardClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       const lessonKey = adminLesson.value;
 
       const delBtn = e.target.closest('[data-action="del"]');
@@ -4010,6 +4045,8 @@
       const card = getCardElFromEvent(e);
       if(!card) return;
       draggingId = card.getAttribute("data-id");
+      dragOverId = null;
+      dragInsertAfter = false;
       card.classList.add("dragging");
       try{
         e.dataTransfer.effectAllowed = "move";
@@ -4025,8 +4062,16 @@
       const overId = over.getAttribute("data-id");
       if(!overId || overId === draggingId) return;
 
+      const rect = over.getBoundingClientRect();
+      const y = e.clientY || 0;
+      const after = y > (rect.top + rect.height / 2);
+
+      dragOverId = overId;
+      dragInsertAfter = after;
+
       clearDropHints();
       over.classList.add("dropHint");
+      over.classList.add(after ? "dropHintBottom" : "dropHintTop");
       try{ e.dataTransfer.dropEffect = "move"; }catch(_){}
     });
 
@@ -4040,40 +4085,45 @@
     listEl.addEventListener("drop", async (e)=>{
       if(selectMode) return;
       e.preventDefault();
-      const over = getCardElFromEvent(e);
-      if(!over) return;
 
-      const overId = over.getAttribute("data-id");
       const fromId = draggingId || "";
+      const overId = dragOverId || getCardElFromEvent(e)?.getAttribute("data-id") || "";
       if(!fromId || !overId || fromId === overId) return;
 
       const lessonKey = adminLesson.value;
 
       const arr = [...lastRendered];
       const fromIdx = arr.findIndex(x=>x.id===fromId);
-      const toIdx = arr.findIndex(x=>x.id===overId);
+      let toIdx = arr.findIndex(x=>x.id===overId);
       if(fromIdx<0 || toIdx<0) return;
 
       const [moved] = arr.splice(fromIdx, 1);
-      arr.splice(toIdx, 0, moved);
+      if(fromIdx < toIdx) toIdx -= 1;
+      const insertIdx = dragInsertAfter ? (toIdx + 1) : toIdx;
+      arr.splice(Math.max(0, Math.min(arr.length, insertIdx)), 0, moved);
 
       try{
         setStatus2("並び替え保存中...", null);
         await renumberOrdersAndSave(lessonKey, arr);
         lastRendered = arr;
         renderAdminList(arr);
+        suppressNextCardClick = true;
         setStatus2("並び替え完了 ✅", "ok");
         setTimeout(()=>setStatus2("", null), 900);
       }catch(err){
         setStatus2(err?.message || String(err||""), "err");
       }finally{
         draggingId = null;
+        dragOverId = null;
+        dragInsertAfter = false;
         clearDropHints();
       }
     });
 
     listEl.addEventListener("dragend", ()=>{
       draggingId = null;
+      dragOverId = null;
+      dragInsertAfter = false;
       clearDropHints();
     });
 
