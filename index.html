@@ -2320,14 +2320,19 @@
     }
 
     function pickNextItemAvoidSame(){
-      if(!lessonItems.length) return null;
-      if(lessonItems.length === 1) return lessonItems[0];
+      const shuffleCandidates = lessonItems.filter(it => !isSpecialItem(it));
+      if(!shuffleCandidates.length) return null;
+      if(shuffleCandidates.length === 1) return shuffleCandidates[0];
 
-      if(currentIndex < 0 && currentItem?.id){
-        currentIndex = lessonItems.findIndex(x => x.id === currentItem.id);
+      const lastIdx = (currentItem && !isSpecialItem(currentItem))
+        ? shuffleCandidates.findIndex(x => x.id === currentItem.id)
+        : -1;
+
+      let idx = Math.floor(Math.random() * shuffleCandidates.length);
+      if(lastIdx >= 0 && idx === lastIdx){
+        idx = (idx + 1) % shuffleCandidates.length;
       }
-      const idx = pickRandomIndexAvoidSame(currentIndex);
-      return lessonItems[idx] || lessonItems[0];
+      return shuffleCandidates[idx] || shuffleCandidates[0];
     }
 
     async function preloadItemImage(item){
@@ -2400,6 +2405,7 @@
       if(isShuffling) return;
       if(isHolding) return;
       if(!lessonItems.length) return;
+      if(!lessonItems.some(it => !isSpecialItem(it))) return;
 
       isShuffling = true;
       reel.classList.add("shuffling");
@@ -2408,7 +2414,8 @@
       const token = ++shuffleToken;
 
       if(!currentItem){
-        const first = pickNextItemAvoidSame() || lessonItems[0];
+        const first = pickNextItemAvoidSame();
+        if(!first) return;
         showOneItemInstant(first);
         await preloadItemImage(first);
       }
