@@ -1,0 +1,3992 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lesson Cards（課別 / スワイプループ / 長押し会話 + スペシャルカード + 連結カード + 並び替え）</title>
+
+  <!-- Firebase (v9 compat) : Auth + Realtime Database -->
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0f14;
+      --panel:#111826;
+      --panel2:#0f1724;
+      --text:#e8eef7;
+      --muted:#a8b4c7;
+      --line:rgba(255,255,255,.12);
+      --accent:#4f7cff;
+      --shadow:0 14px 40px rgba(0,0,0,.45);
+      --radius:18px;
+
+      --cardW: min(86vw, 440px);
+      --cardH: min(68vh, 560px);
+
+      --shuffleTotalMs: 420;
+      --shuffleSteps: 10;
+      --shuffleBlurPx: 2.5;
+      --shuffleSkewDeg: 0.7;
+
+      --holdMs: 260;
+
+      --talkLineHeight: 2.4;
+      --firstLineHeight: 1.55;
+      --firstTalkGap: 10px;
+      --talkOpenMs: 170;
+
+      --textbook-font:
+        "UD デジタル 教科書体 NP-R",
+        "UD デジタル 教科書体 NP",
+        "UD Digi Kyokasho",
+        "UD Digi Kyokasho NP-R",
+        "BIZ UDMincho",
+        "BIZ UDGothic",
+        "Yu Mincho",
+        "Hiragino Mincho ProN",
+        "Noto Serif JP",
+        serif;
+
+      --cardTextWeight: 00;
+
+      --normalShieldBg: rgba(255,255,255,.50);
+      --normalShieldBgExpanded: rgba(255,255,255,.58);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+      background:
+        radial-gradient(1200px 800px at 30% 10%, rgba(79,124,255,.18), transparent 60%),
+        radial-gradient(900px 600px at 80% 10%, rgba(122,92,255,.12), transparent 55%),
+        var(--bg);
+      color:var(--text);
+      overflow:hidden;
+    }
+
+    header{
+      position:fixed; left:0; right:0; top:0; z-index:50;
+      backdrop-filter: blur(10px);
+      background: rgba(10,14,20,.72);
+      border-bottom:1px solid var(--line);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:12px 16px}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
+    .brand .dot{width:10px;height:10px;border-radius:999px;background:var(--accent);box-shadow:0 0 18px rgba(79,124,255,.55)}
+    .auth{display:flex;align-items:center;gap:10px}
+    .pill{
+      display:flex;align-items:center;gap:10px;
+      padding:8px 10px;border:1px solid var(--line);border-radius:999px;
+      background: rgba(255,255,255,.04);
+      max-width: 58vw;
+    }
+    .pill .email{
+      font-size:12px;color:rgba(232,238,247,.85);
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34vw;
+    }
+
+    .btn{
+      appearance:none; border:1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:9px 12px;border-radius:12px;
+      font-weight:900; cursor:pointer;
+      box-shadow: var(--shadow);
+      transition: transform .08s ease, background .12s ease, border-color .12s ease;
+      user-select:none; -webkit-tap-highlight-color:transparent;
+    }
+    .btn:hover{ background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.2); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      border-color: rgba(79,124,255,.35);
+      background: rgba(79,124,255,.16);
+    }
+    .btn.danger{
+      border-color: rgba(239,68,68,.35);
+      background: rgba(239,68,68,.10);
+    }
+    .btn.small{ padding:7px 10px; border-radius:10px; font-size:12px; box-shadow:none; }
+    .btn.ghost{
+      background: transparent;
+      box-shadow:none;
+    }
+    .btn[disabled]{opacity:.45;cursor:not-allowed}
+
+    /* ---------- app layout ---------- */
+    .app{
+      position:fixed; inset:0;
+      padding-top:58px;
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* viewer (non-admin) */
+    .viewer{
+      flex:1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      position:relative;
+    }
+
+    .stage{
+      width: var(--cardW);
+      height: var(--cardH);
+      border-radius: 22px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.04);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+      touch-action: pan-y;
+      user-select:none;
+      -webkit-user-drag:none;
+
+      transform: translateZ(0);
+      will-change: transform;
+
+      --firstLineH: 0px;
+    }
+
+    .reel{
+      position:absolute; inset:0; z-index:1; overflow:hidden;
+      filter: none;
+      transform: translateZ(0);
+      will-change: filter, transform;
+      backface-visibility: hidden;
+    }
+    .reel.shuffling{ filter: blur(var(--shuffleBlurPx)); }
+
+    .slot{
+      position:absolute; top:0; bottom:0;
+      width:100%;
+      display:flex; align-items:center; justify-content:center;
+      will-change: transform;
+      background: rgba(0,0,0,.22);
+      transform: translate3d(0,0,0);
+      backface-visibility: hidden;
+      contain: paint;
+      padding: 0;
+      overflow:hidden;
+    }
+
+    .slot img{
+      width:100%;
+      height:100%;
+      object-fit: contain;
+      object-position: center;
+      display:block;
+      user-select:none;
+      -webkit-user-drag:none;
+      pointer-events:none;
+      background: rgba(0,0,0,.28);
+      transform: translateZ(0);
+      backface-visibility: hidden;
+    }
+
+    /* ✅ 連結カード（横並び）: 罫線（真ん中の線）を完全に出さないため Grid 化 */
+    .comboStrip{
+      width:100%;
+      height:100%;
+      display:grid;
+      grid-template-columns: repeat(var(--comboN, 2), minmax(0, 1fr));
+      gap:0;
+      background: rgba(0,0,0,.28);
+    }
+    .comboStrip .part{
+      height:100%;
+      position:relative;
+      overflow:hidden;
+      background: rgba(0,0,0,.22);
+      display:flex;align-items:center;justify-content:center;
+      border: none !important; /* ✅ 真ん中の線（border）を出さない */
+      outline: none !important;
+    }
+    .comboStrip .part img{
+      width:100%;height:100%;
+      object-fit: contain;
+      background: rgba(0,0,0,.18);
+      display:block;
+      transform: translateZ(0);
+      backface-visibility:hidden;
+    }
+
+    .comboBadge{
+      position:absolute;
+      left:12px; top:12px;
+      z-index:5;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.35);
+      font-size:11px;
+      font-weight:900;
+      color: rgba(232,238,247,.92);
+      backdrop-filter: blur(6px);
+      pointer-events:none;
+    }
+
+    /* ✅ スペシャルカード（画像なし） */
+    .specialCard{
+      width:100%;
+      height:100%;
+      background:#fff;
+      color:#0b1220;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      position:relative;
+    }
+    .specialCardInner{
+      width:100%;
+      height:100%;
+      border-radius:16px;
+      border:1px solid rgba(0,0,0,.10);
+      background:#fff;
+      box-shadow: 0 10px 30px rgba(0,0,0,.10);
+      padding:14px 14px;
+      overflow:auto;
+      white-space: normal;
+      word-break: break-word;
+      font-family: var(--textbook-font);
+      font-weight: var(--cardTextWeight);
+      font-size: 14px;
+      line-height: var(--talkLineHeight);
+    }
+    .specialBadge{
+      position:absolute;
+      left:12px; top:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(0,0,0,.10);
+      background: rgba(255,255,255,.95);
+      font-size:11px;
+      font-weight:900;
+      color:#0b1220;
+      box-shadow: 0 10px 26px rgba(0,0,0,.10);
+      pointer-events:none;
+    }
+
+    .overlayLayer{
+      position:absolute; inset:0;
+      z-index:3;
+      pointer-events:none;
+    }
+    .ovItem{
+      position:absolute;
+      white-space:pre-wrap;
+      word-break:break-word;
+      color:#fff;
+      text-shadow: 0 2px 8px rgba(0,0,0,.55);
+      font-weight:900;
+      line-height:1.15;
+      pointer-events:none;
+      user-select:none;
+    }
+
+    .placeholder{
+      position:absolute; inset:0;
+      display:flex; flex-direction:column; gap:10px;
+      align-items:center; justify-content:center;
+      color: rgba(232,238,247,.75);
+      padding:18px;
+      text-align:center;
+      z-index:2;
+    }
+    .placeholder .t{font-weight:900}
+    .placeholder .s{font-size:12px;color:rgba(232,238,247,.55);line-height:1.6}
+
+    .firstLine{
+      position:absolute;
+      left:12px; right:12px; top:12px; bottom:auto;
+      z-index:6;
+      pointer-events:none;
+      user-select:none;
+      display:none;
+    }
+    .firstLine.show{display:block}
+
+    .firstLineBox{
+      width:100%;
+      border-radius:16px;
+      border:1px solid rgba(0,0,0,.10);
+      background: var(--normalShieldBg);
+      backdrop-filter: blur(10px);
+      padding:10px 12px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.18);
+      color:#0b1220;
+      font-family: var(--textbook-font);
+      font-weight: var(--cardTextWeight);
+      font-size:13px;
+      line-height: var(--firstLineHeight);
+      max-height: 28%;
+      overflow:hidden;
+      transition:
+        max-height var(--talkOpenMs) ease,
+        background var(--talkOpenMs) ease,
+        font-size var(--talkOpenMs) ease,
+        line-height var(--talkOpenMs) ease;
+      display:block;
+    }
+    .firstLineBox:not(.expanded){
+      text-overflow:ellipsis;
+      display:-webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .firstLineBox.expanded{
+      max-height: 70%;
+      overflow:auto;
+      background: var(--normalShieldBgExpanded);
+      display:block;
+      font-size:14px;
+      line-height: var(--talkLineHeight);
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .stage.specialMode .firstLineBox{
+      background:#fff !important;
+      backdrop-filter:none !important;
+      border:1px solid rgba(0,0,0,.10) !important;
+      box-shadow: 0 14px 40px rgba(0,0,0,.12) !important;
+    }
+
+    .shield{ display:none !important; }
+
+    .blueu{
+      text-decoration-line: underline;
+      text-decoration-color: rgba(79,124,255,.95);
+      text-decoration-thickness: 3px;
+      text-underline-offset: 3px;
+      text-decoration-skip-ink: none;
+    }
+    .greenu{
+      text-decoration-line: underline;
+      text-decoration-color: rgba(34,197,94,.95);
+      text-decoration-thickness: 3px;
+      text-underline-offset: 3px;
+      text-decoration-skip-ink: none;
+    }
+    .blacku{
+      text-decoration-line: underline;
+      text-decoration-color: rgba(0,0,0,.92);
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+      text-decoration-skip-ink: none;
+    }
+
+    .lessonBar{
+      position:fixed; left:0; right:0; bottom:0; z-index:40;
+      border-top:1px solid var(--line);
+      background: rgba(10,14,20,.80);
+      backdrop-filter: blur(10px);
+      padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+    }
+    .lessonRow{
+      max-width:1100px;
+      margin:0 auto;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:center;
+      align-items:center;
+    }
+    .lessonBtn{
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: rgba(232,238,247,.9);
+      padding:8px 10px;
+      border-radius:999px;
+      font-weight:900;
+      font-size:12px;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .lessonBtn.active{
+      border-color: rgba(79,124,255,.45);
+      background: rgba(79,124,255,.18);
+      box-shadow: 0 0 0 3px rgba(79,124,255,.12) inset;
+    }
+
+    /* ---------- admin screen ---------- */
+    .admin{
+      flex:1;
+      display:none;
+      padding:16px;
+      overflow:auto;
+    }
+    .admin.show{display:block}
+    .viewer.hide{display:none}
+    .lessonBar.hide{display:none}
+
+    .panel{
+      border:1px solid var(--line);
+      background: rgba(17,24,38,.62);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      max-width:1100px;
+      margin:0 auto 14px;
+    }
+    .panelHead{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:12px 14px;border-bottom:1px solid var(--line);
+      flex-wrap:wrap;
+    }
+    .panelTitle{font-weight:900}
+    .status{font-size:12px;color:rgba(232,238,247,.75);min-height:16px}
+    .status.ok{color:#34d399}
+    .status.err{color:#fb7185}
+    .headRight{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+    .panelBody{
+      padding:12px 14px 14px;
+      display:grid;
+      gap:10px;
+      grid-template-columns: 1.1fr 1fr 1.1fr auto;
+      align-items:end;
+    }
+    @media (max-width: 980px){
+      .panelBody{grid-template-columns:1fr}
+    }
+
+    .field{display:flex;flex-direction:column;gap:6px}
+    .label{font-size:12px;color:rgba(232,238,247,.7);font-weight:800}
+    .input{
+      width:100%;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 10px;
+      outline:none;
+    }
+    .input:focus{
+      border-color: rgba(79,124,255,.45);
+      box-shadow: 0 0 0 3px rgba(79,124,255,.16);
+    }
+    .hint{font-size:11px;color:rgba(232,238,247,.55);line-height:1.45}
+    textarea.input{min-height: 86px; resize: vertical; line-height:1.55; padding:10px 10px;}
+
+    .grid{
+      max-width:1100px;
+      margin:0 auto;
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:12px;
+      padding-bottom: 20px;
+    }
+    @media (min-width: 720px){ .grid{grid-template-columns: repeat(3, minmax(0, 1fr));} }
+    @media (min-width: 980px){ .grid{grid-template-columns: repeat(4, minmax(0, 1fr));} }
+
+    .card{
+      border:1px solid var(--line);
+      background: rgba(17,24,38,.62);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-width:0;
+      cursor:pointer;
+      position:relative;
+    }
+    .card.dragging{ opacity:.55; }
+    .card.dropHint{ outline: 3px solid rgba(79,124,255,.35); }
+
+    .thumb{
+      aspect-ratio: 4 / 3;
+      background: rgba(0,0,0,.22);
+      border-bottom:1px solid var(--line);
+      display:flex;align-items:center;justify-content:center;
+      overflow:hidden;
+      position:relative;
+    }
+    .thumb img{
+      width:100%;
+      height:100%;
+      object-fit: contain;
+      object-position:center;
+      display:block;
+      user-select:none;
+      -webkit-user-drag:none;
+      pointer-events:none;
+      background: rgba(0,0,0,.18);
+    }
+
+    /* ✅ 連結カード：管理サムネも Grid 化（真ん中の線を消す） */
+    .thumbCombo{
+      position:absolute; inset:0;
+      display:grid;
+      grid-template-columns: repeat(var(--comboN, 2), minmax(0,1fr));
+      gap:0;
+      background: rgba(0,0,0,.20);
+    }
+    .thumbCombo .p{
+      overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+      border:none !important; outline:none !important;
+    }
+    .thumbCombo img{
+      width:100%;height:100%;object-fit:contain;background: rgba(0,0,0,.14);
+      display:block;
+    }
+
+    .thumbSpecial{
+      width:100%;
+      height:100%;
+      background:#fff;
+      color:#0b1220;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:10px;
+    }
+    .thumbSpecial .box{
+      width:100%;
+      height:100%;
+      border-radius:12px;
+      border:1px solid rgba(0,0,0,.10);
+      padding:10px;
+      overflow:hidden;
+      font-family: var(--textbook-font);
+      font-weight: var(--cardTextWeight);
+      line-height:1.55;
+      font-size:12px;
+      display:-webkit-box;
+      -webkit-line-clamp: 5;
+      -webkit-box-orient: vertical;
+      word-break: break-word;
+      white-space: normal;
+    }
+
+    .thumbBadge{
+      position:absolute;
+      left:10px; top:10px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.35);
+      font-size:11px;
+      font-weight:900;
+      color: rgba(232,238,247,.92);
+      backdrop-filter: blur(6px);
+      pointer-events:none;
+    }
+
+    .meta{
+      padding:10px 12px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      min-width:0;
+    }
+    .sub{
+      display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+      font-size:11px;color:rgba(232,238,247,.6);
+    }
+    .actions{
+      margin-top:2px;
+      display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;
+    }
+
+    .empty{
+      max-width:1100px;
+      margin:0 auto;
+      color: rgba(232,238,247,.6);
+      font-size:13px;
+      padding:14px;
+      border:1px dashed rgba(255,255,255,.18);
+      border-radius: 14px;
+    }
+
+    /* ✅ 連結モード：チェック */
+    .selCheck{
+      position:absolute;
+      right:10px; top:10px;
+      width:30px; height:30px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.35);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      color:#fff;
+      backdrop-filter: blur(6px);
+      z-index:4;
+    }
+    .card.selMode .selCheck{ display:flex; }
+    .card.selected .selCheck{
+      background: rgba(79,124,255,.35);
+      border-color: rgba(79,124,255,.55);
+      box-shadow: 0 0 0 3px rgba(79,124,255,.12) inset;
+    }
+
+    /* modal */
+    .modalOverlay{
+      position:fixed; inset:0; z-index:999;
+      background: rgba(0,0,0,.55);
+      display:none; align-items:center; justify-content:center;
+      padding: 18px;
+    }
+    .modalOverlay.show{display:flex}
+    .modal{
+      width:min(920px, 100%);
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(17,24,38,.96);
+      box-shadow: 0 26px 70px rgba(0,0,0,.55);
+      overflow:hidden;
+    }
+    .modalHead{
+      padding:12px 14px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .tabs{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .tab{
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: rgba(232,238,247,.8);
+      padding:8px 10px;border-radius:999px;
+      font-weight:900;cursor:pointer;font-size:12px;
+      user-select:none;
+    }
+    .tab.active{
+      border-color: rgba(79,124,255,.35);
+      background: rgba(79,124,255,.16);
+      color: rgba(232,238,247,.95);
+    }
+    .closeX{
+      border:0;background:transparent;color:rgba(232,238,247,.75);
+      font-size:18px;cursor:pointer;padding:6px 10px;border-radius:10px;
+    }
+    .closeX:hover{background:rgba(255,255,255,.06)}
+    .modalBody{padding:14px;display:flex;flex-direction:column;gap:10px}
+    .modalErr{
+      font-size:12px;color:#fb7185;line-height:1.5;white-space:pre-wrap;
+      display:none;
+    }
+    .modalErr.show{display:block}
+    .rowActions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+    .hr{height:1px;background:rgba(255,255,255,.12);margin:6px 0}
+    .hidden{display:none !important}
+
+    .toolBar{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      background: rgba(255,255,255,.04);
+    }
+    .toolHint{
+      font-size:11px;
+      color: rgba(232,238,247,.55);
+      line-height:1.45;
+    }
+
+    .previewBox{
+      width:100%;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      padding:12px;
+      color: rgba(232,238,247,.92);
+      line-height:1.7;
+      max-height: 360px;
+      overflow:auto;
+      white-space: normal;
+    }
+
+    .previewHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:10px;
+      flex-wrap:wrap;
+    }
+    .previewLeftBtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .previewRightNote{
+      font-size:11px;
+      color: rgba(232,238,247,.60);
+      font-weight:800;
+      white-space:nowrap;
+    }
+
+    .paper{
+      border-radius:14px;
+      background: rgba(255,255,255,.74);
+      color:#0b1220;
+      padding:12px;
+      border:1px solid rgba(0,0,0,.10);
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.9;
+      font-family: var(--textbook-font);
+      font-weight: var(--cardTextWeight);
+    }
+    .paper[contenteditable="true"]{
+      outline:none;
+      min-height: 180px;
+    }
+    .paper[contenteditable="true"]:focus{
+      box-shadow: 0 0 0 3px rgba(79,124,255,.18);
+      border-color: rgba(79,124,255,.35);
+    }
+
+    .dropZone{
+      border:1px dashed rgba(255,255,255,.22);
+      background: rgba(255,255,255,.04);
+      border-radius: 14px;
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      align-items:flex-start;
+      justify-content:center;
+      min-height: 56px;
+    }
+    .dropZone strong{font-size:12px; letter-spacing:.02em}
+    .dropZone .small{
+      font-size:11px;color:rgba(232,238,247,.6);line-height:1.45
+    }
+    .dropZone.active{
+      border-color: rgba(79,124,255,.55);
+      background: rgba(79,124,255,.10);
+      box-shadow: 0 0 0 3px rgba(79,124,255,.12) inset;
+    }
+
+    .queue{
+      max-width:1100px;
+      margin:0 auto 14px;
+      border:1px solid var(--line);
+      background: rgba(17,24,38,.48);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      display:none;
+    }
+    .queue.show{display:block}
+    .queueHead{
+      padding:10px 14px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .queueTitle{font-weight:900;font-size:13px}
+    .queueBody{
+      padding:10px 14px 14px;
+      display:grid;
+      gap:10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (min-width: 720px){ .queueBody{grid-template-columns: repeat(3, minmax(0, 1fr));} }
+    @media (min-width: 980px){ .queueBody{grid-template-columns: repeat(4, minmax(0, 1fr));} }
+    .qItem{
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      overflow:hidden;
+      background: rgba(255,255,255,.04);
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .qThumb{
+      aspect-ratio: 4/3;
+      background: rgba(0,0,0,.22);
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden;
+    }
+    .qThumb img{
+      width:100%;
+      height:100%;
+      object-fit: contain;
+      object-position:center;
+      display:block;
+      background: rgba(0,0,0,.18);
+    }
+
+    .qMeta{
+      padding:8px 10px;
+      display:flex; flex-direction:column; gap:8px;
+    }
+    .qLine{
+      font-size:11px;color:rgba(232,238,247,.7);
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .qBtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+    .prog{
+      height:10px;border-radius:999px;
+      background: rgba(255,255,255,.10);
+      overflow:hidden;border:1px solid rgba(255,255,255,.10);
+    }
+    .prog > div{height:100%;width:0%;background: rgba(79,124,255,.85)}
+
+    /* =========================
+       ✅ 画像上文字エディタ（管理）
+       ========================= */
+    .imgEditWrap{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:12px;
+      align-items:start;
+    }
+    @media (max-width: 920px){
+      .imgEditWrap{grid-template-columns:1fr}
+    }
+
+    .canvasOuter{
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px;
+      background: rgba(0,0,0,.22);
+      overflow:hidden;
+      position:relative;
+    }
+    .canvasHead{
+      padding:10px 12px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      display:flex;justify-content:space-between;gap:10px;align-items:center;
+    }
+    .canvasHead .title{
+      font-weight:900;
+      font-size:12px;
+      color: rgba(232,238,247,.86);
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .miniPill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      font-size:11px;
+      color: rgba(232,238,247,.75);
+      font-weight:900;
+    }
+
+    .imgCanvas{
+      position:relative;
+      width:100%;
+      aspect-ratio: 4 / 3;
+      background: rgba(0,0,0,.24);
+      touch-action:none;
+      user-select:none;
+      overflow:hidden;
+    }
+    .imgCanvas img{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit: contain;
+      object-position:center;
+      pointer-events:none;
+      user-select:none;
+      -webkit-user-drag:none;
+      background: rgba(0,0,0,.18);
+    }
+
+    /* ✅ 連結カードのモーダルプレビュー用（画像が正しく出ない問題を修正） */
+    .comboPreview{
+      position:absolute; inset:0;
+      display:none;
+      background: rgba(0,0,0,.24);
+    }
+    .comboPreview.show{ display:block; }
+
+    .noImgCard{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      background:#fff;
+      color:#0b1220;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:12px;
+    }
+    .noImgCard.show{display:flex}
+    .noImgCard .box{
+      width:100%;
+      height:100%;
+      border-radius:12px;
+      border:1px solid rgba(0,0,0,.10);
+      padding:12px;
+      overflow:auto;
+      line-height: var(--talkLineHeight);
+      font-family: var(--textbook-font);
+      font-weight: var(--cardTextWeight);
+      white-space: normal;
+      word-break: break-word;
+      font-size: 14px;
+    }
+
+    .imgCanvas .editOverlayLayer{ position:absolute; inset:0; z-index:2; }
+
+    .canvasShield{
+      position:absolute;
+      left:12px; right:12px; top:12px;
+      z-index:50;
+      display:none;
+      pointer-events:none;
+    }
+    .canvasShield.show{display:block}
+    .canvasShield .talk{
+      max-height: 72%;
+      overflow:auto;
+      padding: 12px;
+      line-height: var(--talkLineHeight);
+      word-break: break-word;
+      white-space: normal;
+      background:#fff;
+      backdrop-filter:none;
+      border:1px solid rgba(0,0,0,.10);
+      box-shadow: 0 14px 40px rgba(0,0,0,.12);
+      font-family: var(--textbook-font);
+      font-weight: var(--cardTextWeight);
+    }
+
+    .editOv{
+      position:absolute;
+      border: 1px dashed rgba(255,255,255,.55);
+      background: rgba(0,0,0,.10);
+      border-radius:10px;
+      padding:6px 8px;
+      min-width: 48px;
+      min-height: 26px;
+      cursor: move;
+      display:flex;
+      align-items:flex-start;
+      justify-content:flex-start;
+      overflow:hidden;
+    }
+    .editOv .txt{
+      outline:none;
+      width:100%;
+      height:100%;
+      color:#fff;
+      font-weight:900;
+      text-shadow: 0 2px 8px rgba(0,0,0,.55);
+      white-space:pre-wrap;
+      word-break:break-word;
+      line-height:1.15;
+      user-select:text;
+      cursor:text;
+    }
+    .editOv.selected{
+      border-color: rgba(79,124,255,.95);
+      box-shadow: 0 0 0 3px rgba(79,124,255,.18);
+      background: rgba(79,124,255,.10);
+    }
+
+    .handle{
+      position:absolute;
+      width:14px;height:14px;
+      border-radius:6px;
+      background: rgba(79,124,255,.95);
+      border:2px solid rgba(0,0,0,.25);
+      right: -7px;
+      bottom: -7px;
+      cursor: nwse-resize;
+    }
+    .handle::after{
+      content:"";
+      position:absolute;
+      inset:3px;
+      border-radius:4px;
+      border:1px solid rgba(255,255,255,.65);
+    }
+
+    .sideBox{
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px;
+      padding:12px;
+      background: rgba(255,255,255,.04);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .kv{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .kv label{
+      font-size:11px;
+      font-weight:900;
+      color: rgba(232,238,247,.75);
+      min-width: 68px;
+    }
+    .range{ flex:1; min-width: 180px; }
+    .color{
+      width: 42px;
+      height: 34px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      padding:0;
+    }
+    .chipBtn{
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: rgba(232,238,247,.9);
+      padding:7px 10px;
+      border-radius:999px;
+      font-weight:900;
+      cursor:pointer;
+      font-size:12px;
+    }
+    .chipBtn.active{
+      border-color: rgba(79,124,255,.45);
+      background: rgba(79,124,255,.18);
+      box-shadow: 0 0 0 3px rgba(79,124,255,.12) inset;
+    }
+
+    .talkEditWrap{
+      display:grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap:12px;
+      align-items:start;
+    }
+    @media (max-width: 920px){
+      .talkEditWrap{grid-template-columns:1fr}
+    }
+    .talkCanvas{
+      position:relative;
+      width:100%;
+      aspect-ratio: 4 / 3;
+      background: rgba(0,0,0,.24);
+      user-select:none;
+      overflow:hidden;
+      touch-action: pan-y;
+    }
+    .talkCanvas img{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit: contain;
+      object-position:center;
+      pointer-events:none;
+      user-select:none;
+      -webkit-user-drag:none;
+      background: rgba(0,0,0,.18);
+    }
+    .talkCanvas .talkOverlayLayer{
+      position:absolute; inset:0;
+      z-index:2;
+      pointer-events:none;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="wrap">
+      <div class="bar">
+        <div class="brand"><span class="dot"></span> Lesson Cards</div>
+        <div class="auth">
+          <button class="btn primary" id="btnLogin">ログイン</button>
+          <div class="pill hidden" id="userPill">
+            <div class="email" id="userEmail">-</div>
+            <button class="btn small" id="btnLogout">ログアウト</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app">
+    <!-- 非ログイン時（閲覧側） -->
+    <div class="viewer" id="viewer">
+      <div class="stage" id="stage" aria-label="image-stage">
+        <div class="reel" id="reel">
+          <div class="slot" id="slotPrev"></div>
+          <div class="slot" id="slotCur"></div>
+          <div class="slot" id="slotNext"></div>
+        </div>
+
+        <div class="overlayLayer" id="viewerOverlay"></div>
+
+        <div class="placeholder" id="placeholder">
+          <div class="t">課を選択してください</div>
+          <div class="s">下の「課」ボタンで切り替え。<br>横スワイプで高速ループ。<br>画像カードは長押し中だけ会話。<br>スペシャルカードは常時会話表示。<br>連結カードは画像が横並び表示。</div>
+        </div>
+
+        <div class="firstLine" id="firstLine">
+          <div class="firstLineBox" id="firstLineBox"><div id="firstLineText">（未登録）</div></div>
+        </div>
+
+        <div class="shield" id="shield">
+          <div class="talk" id="talkBox">
+            <div id="talkText">(未登録)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ログイン時（管理画面） -->
+    <div class="admin" id="admin">
+      <section class="panel">
+        <div class="panelHead">
+          <div class="panelTitle">管理画面：画像登録 / スペシャルカード登録（課別）</div>
+          <div class="status" id="status"></div>
+        </div>
+
+        <div class="panelBody">
+          <div class="field">
+            <div class="label">課（保存先）</div>
+            <select class="input" id="adminLesson"></select>
+            <div class="hint">ここで選んだ課に「画像カード」または「スペシャルカード」が保存されます。</div>
+          </div>
+
+          <div class="field">
+            <div class="label">画像カード：会話文（長押し表示）</div>
+            <input class="input" id="fTalkQuick" placeholder="（任意）あとで一覧のカードをクリックして編集できます" />
+            <div class="hint">ここは簡易入力（1行）。改行・青線/緑線/黒線は、登録後にカードクリックで編集してください。</div>
+          </div>
+
+          <div class="field">
+            <div class="label">画像ファイル（複数OK）</div>
+            <input class="input" id="fFile" type="file" accept="image/*" multiple />
+            <div class="hint">複数選択OK。ドラッグ&ドロップでも追加できます。</div>
+          </div>
+
+          <button class="btn primary" id="btnUpload">まとめてアップロード</button>
+
+          <div class="field" style="grid-column: 1 / -1;">
+            <div class="dropZone" id="dropZone">
+              <strong>ここに画像をドラッグ＆ドロップ（複数同時OK）</strong>
+              <div class="small">※ブラウザの「ファイル」からもOK。Storage不使用（DBにdataURL保存）。</div>
+              <div class="small">※目安：1枚 2MB以下推奨（大きいとDB制限に当たりやすい）。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <div class="panelTitle">スペシャルカード（画像なし・常時会話表示）</div>
+          <div class="status" id="statusSp"></div>
+        </div>
+        <div class="panelBody" style="grid-template-columns: 1.1fr 1.9fr auto; align-items:end;">
+          <div class="field">
+            <div class="label">課（保存先）</div>
+            <select class="input" id="spLesson"></select>
+            <div class="hint">この課にスペシャルカードとして保存します。</div>
+          </div>
+
+          <div class="field">
+            <div class="label">会話文（常時表示 / 改行OK）</div>
+            <textarea class="input" id="spTalk" placeholder="例：\n今日はスペシャル練習！\n1) 〜\n2) 〜"></textarea>
+            <div class="hint">保存後も一覧のカードをクリックして、青線/緑線/黒線付きで編集できます。</div>
+          </div>
+
+          <button class="btn primary" id="btnAddSpecial">スペシャルカードを追加</button>
+        </div>
+      </section>
+
+      <section class="queue" id="queuePanel">
+        <div class="queueHead">
+          <div class="queueTitle">アップロード待ち：<span id="queueCount">0</span> 件</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn small" id="btnClearQueue">クリア</button>
+          </div>
+        </div>
+        <div class="queueBody" id="queueBody"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <div class="panelTitle">登録一覧（課別）</div>
+          <div class="headRight">
+            <button class="btn small" id="btnToggleSelect">連結モード</button>
+            <button class="btn small primary" id="btnCombine" disabled>選択を連結して保存</button>
+            <button class="btn small" id="btnClearSelect" disabled>選択解除</button>
+            <div class="status" id="status2"></div>
+          </div>
+        </div>
+        <div class="panelBody" style="grid-template-columns:1fr auto; align-items:center;">
+          <div class="field">
+            <div class="label">表示する課</div>
+            <select class="input" id="listLesson"></select>
+            <div class="hint">
+              ✅ ドラッグ＆ドロップでカード順を入れ替えできます。<br>
+              ✅ 連結モードで複数選択 → 連結カード（横並び）として1枚保存。
+            </div>
+          </div>
+          <button class="btn" id="btnRefresh">更新</button>
+        </div>
+      </section>
+
+      <section id="list" class="grid" aria-label="card-list"></section>
+      <div id="empty" class="empty hidden">この課にはまだカードがありません。</div>
+    </div>
+  </div>
+
+  <div class="lessonBar" id="lessonBar">
+    <div class="lessonRow" id="lessonRow"></div>
+  </div>
+
+  <!-- Auth Modal -->
+  <div class="modalOverlay" id="authModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="auth-modal">
+      <div class="modalHead">
+        <div class="tabs">
+          <div class="tab active" id="tabLogin">ログイン</div>
+          <div class="tab" id="tabSignup">新規登録</div>
+        </div>
+        <button class="closeX" id="btnCloseAuth" aria-label="close">×</button>
+      </div>
+      <div class="modalBody">
+        <div class="toolHint">ID（メール）とパスワード（Firebaseメール/パスワード方式）。</div>
+
+        <div class="field">
+          <div class="label">ID（メールアドレス）</div>
+          <input class="input" id="authEmail" type="email" autocomplete="email" placeholder="name@example.com">
+        </div>
+
+        <div class="field">
+          <div class="label">パスワード</div>
+          <input class="input" id="authPass" type="password" autocomplete="current-password" placeholder="6文字以上">
+        </div>
+
+        <div class="modalErr" id="authErr"></div>
+
+        <div class="rowActions">
+          <button class="btn primary" id="btnAuthDo">ログイン</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="toolHint" id="authNote">新規登録が必要なら「新規登録」タブへ。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Combined Edit Modal (Talk + ImageText) -->
+  <div class="modalOverlay" id="editModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="edit-modal">
+      <div class="modalHead">
+        <div class="tabs">
+          <div class="tab active" id="tabTalk">会話文</div>
+          <div class="tab" id="tabImgText">画像上の文字</div>
+        </div>
+        <button class="closeX" id="btnCloseEdit" aria-label="close">×</button>
+      </div>
+
+      <div class="modalBody" style="position:relative">
+        <section id="sectionTalk">
+          <div class="talkEditWrap">
+            <div class="canvasOuter">
+              <div class="canvasHead">
+                <div class="title">
+                  <span class="miniPill">プレビュー</span>
+                  <span class="miniPill" id="talkItemInfo">-</span>
+                </div>
+                <div class="toolHint" id="talkPreviewHint">※画像カード：長押し中だけ会話表示</div>
+              </div>
+
+              <div class="talkCanvas" id="talkCanvas" aria-label="talk-canvas">
+                <img id="talkCanvasImg" alt="">
+                <!-- ✅ 連結カードのプレビュー（画像が正しく出ない問題を修正） -->
+                <div class="comboPreview" id="talkComboPreview"></div>
+
+                <div class="noImgCard" id="talkNoImgCard"><div class="box" id="talkNoImgText"></div></div>
+
+                <div class="talkOverlayLayer" id="talkOverlayLayer"></div>
+
+                <div class="canvasShield" id="talkCanvasShield">
+                  <div class="talk"><div id="talkCanvasTalkText">(未登録)</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+              <div class="field">
+                <div class="label">会話文（右の本文で直接入力 / 改行OK）</div>
+
+                <div class="previewBox" id="editPreview">
+                  <div class="previewHead">
+                    <div class="previewLeftBtns">
+                      <button class="btn small" id="btnBlueLine">青線（選択範囲：付ける/外す）</button>
+                      <button class="btn small" id="btnGreenLine">緑線（選択範囲：付ける/外す）</button>
+                      <button class="btn small" id="btnBlackLine">黒線（選択範囲：付ける/外す）</button>
+                    </div>
+                    <div class="previewRightNote">※本文を選択→ボタン</div>
+                  </div>
+
+                  <div class="paper" id="editPaper" contenteditable="true"></div>
+                </div>
+
+                <div class="toolHint">保存すると閲覧側の表示にも反映されます（スペシャルは常時表示）。</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="sectionImgText" class="hidden">
+          <div class="toolBar">
+            <button class="btn small primary" id="btnAddText">＋ 文字を追加</button>
+            <button class="btn small danger" id="btnDelText">選択文字を削除</button>
+            <span class="toolHint">※文字をドラッグで移動／右下ハンドルでサイズ変更。文字自体はクリックして編集。</span>
+          </div>
+
+          <div class="imgEditWrap">
+            <div class="canvasOuter">
+              <div class="canvasHead">
+                <div class="title">
+                  <span class="miniPill">プレビュー</span>
+                  <span class="miniPill" id="editItemInfo">-</span>
+                </div>
+                <div class="toolHint">※画像カード：長押し中だけ会話表示</div>
+              </div>
+
+              <div class="imgCanvas" id="imgCanvas" aria-label="image-canvas">
+                <img id="imgCanvasImg" alt="">
+                <div class="comboPreview" id="imgComboPreview"></div>
+
+                <div class="noImgCard" id="imgNoImgCard"><div class="box" id="imgNoImgText"></div></div>
+
+                <div class="editOverlayLayer" id="editOverlayLayer"></div>
+
+                <div class="canvasShield" id="imgCanvasShield">
+                  <div class="talk"><div id="imgCanvasTalkText">(未登録)</div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sideBox">
+              <div class="toolHint" style="margin-top:2px">
+                <b>選択中の文字設定</b><br>
+                選択していない場合は「＋文字を追加」してください。
+              </div>
+
+              <div class="kv">
+                <label>サイズ</label>
+                <input class="range" id="ovFont" type="range" min="10" max="96" step="1" value="36">
+                <span class="miniPill"><span id="ovFontVal">36</span>px</span>
+              </div>
+
+              <div class="kv">
+                <label>色</label>
+                <input class="color" id="ovColor" type="color" value="#ffffff">
+                <span class="toolHint">（文字色）</span>
+              </div>
+
+              <div class="kv">
+                <label>太字</label>
+                <button class="chipBtn" id="ovBold">B</button>
+                <button class="chipBtn" id="ovShadow">影</button>
+              </div>
+
+              <div class="kv">
+                <label>整列</label>
+                <button class="chipBtn" data-align="left">左</button>
+                <button class="chipBtn" data-align="center">中</button>
+                <button class="chipBtn" data-align="right">右</button>
+              </div>
+
+              <div class="hr"></div>
+              <div class="toolHint">
+                保存は下の「保存」ボタン（会話文も同時に保存できます）。
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="modalErr" id="editErr"></div>
+
+        <div class="rowActions">
+          <button class="btn" id="btnEditDelete">削除</button>
+          <button class="btn primary" id="btnEditSave">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================
+    // Firebase Config
+    // =========================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDEwJejLA1DnsoXVbCx_wfo3nmPtw5mbeQ",
+      authDomain: "class-files-c5fef.firebaseapp.com",
+      databaseURL: "https://class-files-c5fef-default-rtdb.firebaseio.com/",
+      projectId: "class-files-c5fef",
+      storageBucket: "class-files-c5fef.firebasestorage.app",
+      messagingSenderId: "373131822812",
+      appId: "1:373131822812:web:f8bb96f3bb9cfe51f2d619",
+      measurementId: "G-5KP73MM8T9"
+    };
+
+    const PATH_LESSONS = "lessons";
+
+    const LESSONS = [
+      { key:"k1",  label:"課1" },
+      { key:"k2",  label:"課2" },
+      { key:"k3",  label:"課3" },
+      { key:"k4",  label:"課4" },
+      { key:"k5",  label:"課5" },
+      { key:"k6",  label:"課6" },
+      { key:"k7",  label:"課7" },
+      { key:"k8",  label:"課8" },
+      { key:"k9",  label:"課9" },
+      { key:"k10", label:"課10" }
+    ];
+
+    const $ = (s)=>document.querySelector(s);
+
+    // header
+    const btnLogin = $("#btnLogin");
+    const btnLogout = $("#btnLogout");
+    const userPill = $("#userPill");
+    const userEmail = $("#userEmail");
+
+    // views
+    const viewer = $("#viewer");
+    const admin = $("#admin");
+    const lessonBar = $("#lessonBar");
+
+    // viewer stage
+    const stage = $("#stage");
+    const reel = $("#reel");
+    const placeholder = $("#placeholder");
+    const viewerOverlay = $("#viewerOverlay");
+
+    // firstLine
+    const firstLine = $("#firstLine");
+    const firstLineText = $("#firstLineText");
+    const firstLineBox = $("#firstLineBox");
+
+    // legacy talk (disabled)
+    const shield = $("#shield");
+    const talkText = $("#talkText");
+
+    // reel slots
+    const slotPrev = $("#slotPrev");
+    const slotCur  = $("#slotCur");
+    const slotNext = $("#slotNext");
+
+    // lesson buttons bottom
+    const lessonRow = $("#lessonRow");
+
+    // admin upload
+    const statusEl = $("#status");
+    const status2El = $("#status2");
+    const adminLesson = $("#adminLesson");
+    const listLesson = $("#listLesson");
+    const btnRefresh = $("#btnRefresh");
+    const fTalkQuick = $("#fTalkQuick");
+    const fFile = $("#fFile");
+    const btnUpload = $("#btnUpload");
+
+    // ✅ special add
+    const statusSpEl = $("#statusSp");
+    const spLesson = $("#spLesson");
+    const spTalk = $("#spTalk");
+    const btnAddSpecial = $("#btnAddSpecial");
+
+    // drag drop + queue
+    const dropZone = $("#dropZone");
+    const queuePanel = $("#queuePanel");
+    const queueBody = $("#queueBody");
+    const queueCount = $("#queueCount");
+    const btnClearQueue = $("#btnClearQueue");
+
+    // admin list
+    const listEl = $("#list");
+    const emptyEl = $("#empty");
+
+    // ✅ combine/select controls
+    const btnToggleSelect = $("#btnToggleSelect");
+    const btnCombine = $("#btnCombine");
+    const btnClearSelect = $("#btnClearSelect");
+
+    // auth modal
+    const authModal = $("#authModal");
+    const tabLogin = $("#tabLogin");
+    const tabSignup = $("#tabSignup");
+    const btnCloseAuth = $("#btnCloseAuth");
+    const btnAuthDo = $("#btnAuthDo");
+    const authEmail = $("#authEmail");
+    const authPass = $("#authPass");
+    const authErr = $("#authErr");
+    const authNote = $("#authNote");
+
+    // edit modal
+    const editModal = $("#editModal");
+    const btnCloseEdit = $("#btnCloseEdit");
+    const editErr = $("#editErr");
+    const btnEditSave = $("#btnEditSave");
+    const btnEditDelete = $("#btnEditDelete");
+
+    // tabs in edit modal
+    const tabTalk = $("#tabTalk");
+    const tabImgText = $("#tabImgText");
+    const sectionTalk = $("#sectionTalk");
+    const sectionImgText = $("#sectionImgText");
+
+    // talk editor
+    const btnBlueLine = $("#btnBlueLine");
+    const btnGreenLine = $("#btnGreenLine");
+    const btnBlackLine = $("#btnBlackLine");
+    const editPaper = $("#editPaper");
+
+    // talk tab preview elements
+    const talkItemInfo = $("#talkItemInfo");
+    const talkPreviewHint = $("#talkPreviewHint");
+    const talkCanvasImg = $("#talkCanvasImg");
+    const talkComboPreview = $("#talkComboPreview");   // ✅ 追加
+    const talkOverlayLayer = $("#talkOverlayLayer");
+    const talkCanvas = $("#talkCanvas");
+    const talkNoImgCard = $("#talkNoImgCard");
+    const talkNoImgText = $("#talkNoImgText");
+
+    // talk overlay inside preview
+    const talkCanvasShield = $("#talkCanvasShield");
+    const talkCanvasTalkText = $("#talkCanvasTalkText");
+
+    // image text editor elements
+    const imgCanvas = $("#imgCanvas");
+    const imgCanvasImg = $("#imgCanvasImg");
+    const imgComboPreview = $("#imgComboPreview");     // ✅ 追加
+    const editOverlayLayer = $("#editOverlayLayer");
+    const editItemInfo = $("#editItemInfo");
+    const btnAddText = $("#btnAddText");
+    const btnDelText = $("#btnDelText");
+    const ovFont = $("#ovFont");
+    const ovFontVal = $("#ovFontVal");
+    const ovColor = $("#ovColor");
+    const ovBold = $("#ovBold");
+    const ovShadow = $("#ovShadow");
+
+    const imgNoImgCard = $("#imgNoImgCard");
+    const imgNoImgText = $("#imgNoImgText");
+
+    // talk overlay inside image tab preview
+    const imgCanvasShield = $("#imgCanvasShield");
+    const imgCanvasTalkText = $("#imgCanvasTalkText");
+
+    // align buttons
+    const alignBtns = [...sectionImgText.querySelectorAll('[data-align]')];
+
+    // =========================
+    // State
+    // =========================
+    let authMode = "login";
+    let auth = null;
+    let db = null;
+    let currentUser = null;
+
+    let currentLessonKey = LESSONS[0]?.key || "k1";
+    let lessonItems = [];
+    let currentItem = null;
+    let currentIndex = -1;
+
+    let isShuffling = false;
+
+    let holdTimer = null;
+    let isHolding = false;
+
+    let pDown = null;
+    const SWIPE_MIN_X = 40;
+    const SWIPE_MAX_Y = 34;
+
+    let lastRendered = [];
+    let editTarget = null;
+
+    let editTalkMarkers = "";
+
+    // upload
+    let uploadQueue = [];
+
+    let shuffleToken = 0;
+
+    // overlay edit state
+    let editOverlays = [];
+    let selectedOvId = null;
+
+    // drag/resize state
+    let dragState = null;
+
+    // modal hold
+    let modalHoldTimer = null;
+    let modalHolding = false;
+    let modalHoldStart = null;
+    const MODAL_HOLD_CANCEL_PX = 10;
+
+    // ✅ select/combine + reorder
+    let selectMode = false;
+    const selectedIds = new Set();
+    let draggingId = null;
+
+    // =========================
+    // Helpers
+    // =========================
+    function setStatus(msg, type){
+      statusEl.textContent = msg || "";
+      statusEl.classList.remove("ok","err");
+      if(type) statusEl.classList.add(type);
+    }
+    function setStatus2(msg, type){
+      status2El.textContent = msg || "";
+      status2El.classList.remove("ok","err");
+      if(type) status2El.classList.add(type);
+    }
+    function setStatusSp(msg, type){
+      statusSpEl.textContent = msg || "";
+      statusSpEl.classList.remove("ok","err");
+      if(type) statusSpEl.classList.add(type);
+    }
+
+    function showAuthModal(open){
+      authModal.classList.toggle("show", !!open);
+      authModal.setAttribute("aria-hidden", open ? "false" : "true");
+      authErr.classList.remove("show");
+      authErr.textContent = "";
+      if(open) setTimeout(()=>authEmail.focus(), 50);
+    }
+    function setAuthMode(mode){
+      authMode = mode;
+      tabLogin.classList.toggle("active", mode==="login");
+      tabSignup.classList.toggle("active", mode==="signup");
+      btnAuthDo.textContent = (mode==="login") ? "ログイン" : "新規登録";
+      authNote.textContent = (mode==="login")
+        ? "新規登録が必要なら「新規登録」タブへ。"
+        : "すでにアカウントがあるなら「ログイン」タブへ。";
+      authErr.classList.remove("show");
+      authErr.textContent = "";
+    }
+
+    function showEditModal(open){
+      editModal.classList.toggle("show", !!open);
+      editModal.setAttribute("aria-hidden", open ? "false" : "true");
+      editErr.classList.remove("show");
+      editErr.textContent = "";
+      hideModalTalkAll();
+    }
+
+    function setEditTab(which){
+      const isTalk = which === "talk";
+      tabTalk.classList.toggle("active", isTalk);
+      tabImgText.classList.toggle("active", !isTalk);
+      sectionTalk.classList.toggle("hidden", !isTalk);
+      sectionImgText.classList.toggle("hidden", isTalk);
+
+      hideModalTalkAll();
+      if(isTalk) renderTalkTabPreview();
+    }
+
+    function escapeHtml(s){
+      return String(s ?? "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+    }
+
+    function fmtBytes(n){
+      const v = Number(n||0);
+      if(v < 1024) return `${v} B`;
+      if(v < 1024*1024) return `${(v/1024).toFixed(1)} KB`;
+      return `${(v/1024/1024).toFixed(2)} MB`;
+    }
+
+    function fmtTime(ts){
+      if(!ts) return "";
+      const d = new Date(Number(ts));
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,"0");
+      const dd = String(d.getDate()).padStart(2,"0");
+      const hh = String(d.getHours()).padStart(2,"0");
+      const mm = String(d.getMinutes()).padStart(2,"0");
+      return `${y}-${m}-${dd} ${hh}:${mm}`;
+    }
+
+    function friendlyAuthError(e){
+      const code = e?.code || "";
+      if(code==="auth/invalid-email") return "メールアドレスの形式が正しくありません。";
+      if(code==="auth/missing-password") return "パスワードを入力してください。";
+      if(code==="auth/weak-password") return "パスワードが弱いです（6文字以上）。";
+      if(code==="auth/user-not-found") return "ユーザーが見つかりません（新規登録してください）。";
+      if(code==="auth/wrong-password") return "パスワードが違います。";
+      if(code==="auth/email-already-in-use") return "このメールは既に使われています（ログインしてください）。";
+      if(code==="auth/network-request-failed") return "ネットワークに接続できません。";
+      if(code==="auth/too-many-requests") return "試行回数が多すぎます。少し待って再度。";
+      if(code==="auth/operation-not-allowed") return "Firebase側でメール/パスワード認証が有効ではありません。";
+      return `認証に失敗しました。\n${code ? `[${code}] ` : ""}${e?.message || e}`;
+    }
+
+    function isAdminSignedIn(){
+      return !!currentUser && !currentUser.isAnonymous;
+    }
+
+    function updateAuthUI(){
+      const adminOn = isAdminSignedIn();
+
+      btnLogin.classList.toggle("hidden", adminOn);
+      userPill.classList.toggle("hidden", !adminOn);
+
+      if(adminOn){
+        userEmail.textContent = currentUser.email || "(no email)";
+        viewer.classList.add("hide");
+        lessonBar.classList.add("hide");
+        admin.classList.add("show");
+        setStatus("", null);
+      }else{
+        viewer.classList.remove("hide");
+        lessonBar.classList.remove("hide");
+        admin.classList.remove("show");
+        setStatus("", null);
+      }
+    }
+
+    function buildLessonUI(){
+      lessonRow.innerHTML = LESSONS.map(l => `
+        <button class="lessonBtn" data-lesson="${escapeHtml(l.key)}">${escapeHtml(l.label)}</button>
+      `).join("");
+
+      const opts = LESSONS.map(l => `<option value="${escapeHtml(l.key)}">${escapeHtml(l.label)}</option>`).join("");
+      adminLesson.innerHTML = opts;
+      listLesson.innerHTML = opts;
+      spLesson.innerHTML = opts;
+
+      setLesson(currentLessonKey, true);
+      adminLesson.value = currentLessonKey;
+      listLesson.value = currentLessonKey;
+      spLesson.value = currentLessonKey;
+    }
+
+    function setLesson(key, silent){
+      currentLessonKey = key;
+
+      [...lessonRow.querySelectorAll(".lessonBtn")].forEach(b=>{
+        b.classList.toggle("active", b.getAttribute("data-lesson") === key);
+      });
+
+      hideTalk();
+      currentItem = null;
+      currentIndex = -1;
+      lessonItems = [];
+      renderStageEmpty("読み込み中...");
+
+      shuffleToken++;
+
+      if(!silent) saveLastLesson(key);
+      loadLessonItemsForViewer(key);
+    }
+
+    function saveLastLesson(key){
+      try{ localStorage.setItem("lessonCards:lastLesson", key); }catch(_){}
+    }
+    function loadLastLesson(){
+      try{
+        const v = localStorage.getItem("lessonCards:lastLesson");
+        if(v && LESSONS.some(x=>x.key===v)) return v;
+      }catch(_){}
+      return LESSONS[0]?.key || "k1";
+    }
+
+    function getCssNumber(varName, fallback){
+      const v = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      const n = Number(String(v).replace("ms","").trim());
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    }
+
+    // =========================
+    // Talk rendering
+    // =========================
+    function toTalkHtml(raw){
+      const safe = escapeHtml(String(raw ?? ""));
+      return safe
+        .replaceAll("[[u]]", '<span class="blueu">')
+        .replaceAll("[[/u]]", "</span>")
+        .replaceAll("[[g]]", '<span class="greenu">')
+        .replaceAll("[[/g]]", "</span>")
+        .replaceAll("[[k]]", '<span class="blacku">')
+        .replaceAll("[[/k]]", "</span>")
+        .replaceAll("\n", "<br>");
+    }
+
+    function stripMarkers(raw){
+      return String(raw ?? "")
+        .replaceAll("[[u]]", "")
+        .replaceAll("[[/u]]", "")
+        .replaceAll("[[g]]", "")
+        .replaceAll("[[/g]]", "")
+        .replaceAll("[[k]]", "")
+        .replaceAll("[[/k]]", "");
+    }
+
+    function talkPlainPreview(raw, max=44){
+      const s = stripMarkers(raw)
+        .replace(/\s+/g," ")
+        .trim();
+      if(!s) return "（未登録）";
+      return s.length > max ? s.slice(0,max) + "…" : s;
+    }
+
+    function firstLineFromTalk(raw){
+      const plain = stripMarkers(String(raw ?? "")).replace(/\r\n/g,"\n");
+      const s = plain.trim();
+      if(!s) return "（未登録）";
+      const line = s.split("\n")[0].trim();
+      return line || "（未登録）";
+    }
+
+    function isSpecialItem(item){
+      return (item?.type === "special");
+    }
+    function isComboItem(item){
+      return (item?.type === "combo");
+    }
+
+    function applyStageMode(item){
+      stage.classList.toggle("specialMode", !!item && isSpecialItem(item));
+    }
+
+    function updateFirstLine(item){
+      if(!item){
+        applyStageMode(null);
+        firstLine.classList.remove("show");
+        firstLineText.textContent = "";
+        firstLineBox.classList.remove("expanded");
+        stage.style.setProperty("--firstLineH", "0px");
+        return;
+      }
+
+      applyStageMode(item);
+
+      const raw = (item.talk || "").trim() || "（未登録）";
+
+      if(isSpecialItem(item)){
+        firstLineText.innerHTML = toTalkHtml(raw);
+        firstLineBox.classList.add("expanded");
+        firstLine.classList.add("show");
+      }else{
+        const line = firstLineFromTalk(raw);
+        firstLineText.textContent = line;
+        firstLineBox.classList.remove("expanded");
+        firstLine.classList.add("show");
+      }
+
+      requestAnimationFrame(()=>{
+        const h = Math.ceil(firstLineBox?.getBoundingClientRect?.().height || 0);
+        stage.style.setProperty("--firstLineH", `${h}px`);
+      });
+    }
+
+    // =========================
+    // Overlay rendering (viewer) ※通常画像カードのみ
+    // =========================
+    function sanitizeOverlays(arr){
+      const a = Array.isArray(arr) ? arr : [];
+      const out = [];
+      for(const it of a){
+        if(!it) continue;
+        const id = String(it.id || "");
+        const text = String(it.text || "");
+        if(!id) continue;
+        const x = clamp01(Number(it.x));
+        const y = clamp01(Number(it.y));
+        const w = clamp01(Number(it.w));
+        const h = clamp01(Number(it.h));
+        const font = clampNum(Number(it.font), 10, 96, 36);
+        const color = String(it.color || "#ffffff");
+        const bold = !!it.bold;
+        const shadow = (it.shadow !== false);
+        const align = (it.align==="center"||it.align==="right") ? it.align : "left";
+        out.push({id, text, x, y, w, h, font, color, bold, shadow, align});
+      }
+      return out;
+    }
+    function clamp01(n){
+      if(!Number.isFinite(n)) return 0;
+      return Math.max(0, Math.min(1, n));
+    }
+    function clampNum(n, min, max, fallback){
+      if(!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function renderViewerOverlays(item){
+      if(!item || isSpecialItem(item) || isComboItem(item)){
+        viewerOverlay.innerHTML = "";
+        return;
+      }
+      const overlays = sanitizeOverlays(item?.overlays || []);
+      viewerOverlay.innerHTML = overlays.map(o=>{
+        const left = (o.x*100).toFixed(4);
+        const top  = (o.y*100).toFixed(4);
+        const width= (o.w*100).toFixed(4);
+        const height=(o.h*100).toFixed(4);
+        const fw = o.bold ? 900 : 700;
+        const ta = o.align;
+        const sh = o.shadow ? "0 2px 8px rgba(0,0,0,.55)" : "none";
+        return `
+          <div class="ovItem"
+               style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;
+                      font-size:${o.font}px;font-weight:${fw};text-align:${ta};text-shadow:${sh};color:${escapeHtml(o.color)};">
+            ${escapeHtml(o.text)}
+          </div>
+        `;
+      }).join("");
+    }
+
+    // =========================
+    // Talk tab preview rendering
+    // =========================
+    function renderComboHtml(images){
+      const parts = Array.isArray(images) ? images.filter(Boolean) : [];
+      const n = Math.max(1, parts.length || 1);
+      return `
+        <div class="comboStrip" style="--comboN:${n}">
+          ${parts.map(u=>`
+            <div class="part"><img src="${escapeHtml(u)}" alt=""></div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderTalkTabPreview(){
+      if(!editTarget) return;
+
+      const isSp = !!editTarget?.isSpecial;
+      const isCombo = !!editTarget?.isCombo;
+
+      // reset
+      talkComboPreview.classList.remove("show");
+      talkComboPreview.innerHTML = "";
+
+      if(isSp){
+        talkCanvasImg.src = "";
+        talkCanvasImg.style.display = "none";
+        talkNoImgCard.classList.add("show");
+        talkNoImgText.innerHTML = toTalkHtml(markersFromPaper()?.trim() || editTalkMarkers || "（未登録）");
+      }else if(isCombo){
+        // ✅ 連結カード：画像を横並びで表示（プレビュー修正）
+        talkNoImgCard.classList.remove("show");
+        talkCanvasImg.src = "";
+        talkCanvasImg.style.display = "none";
+        talkComboPreview.classList.add("show");
+        talkComboPreview.innerHTML = renderComboHtml(editTarget.comboImages || []);
+      }else{
+        talkNoImgCard.classList.remove("show");
+        talkCanvasImg.style.display = "block";
+        if(imgCanvasImg?.src) talkCanvasImg.src = imgCanvasImg.src;
+      }
+
+      if(isSp || isCombo){
+        talkOverlayLayer.innerHTML = "";
+      }else{
+        const overlays = sanitizeOverlays(editOverlays || []);
+        talkOverlayLayer.innerHTML = overlays.map(o=>{
+          const left = (o.x*100).toFixed(4);
+          const top  = (o.y*100).toFixed(4);
+          const width= (o.w*100).toFixed(4);
+          const height=(o.h*100).toFixed(4);
+          const fw = o.bold ? 900 : 700;
+          const ta = o.align;
+          const sh = o.shadow ? "0 2px 8px rgba(0,0,0,.55)" : "none";
+          return `
+            <div class="ovItem"
+                 style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;
+                        font-size:${o.font}px;font-weight:${fw};text-align:${ta};text-shadow:${sh};color:${escapeHtml(o.color)};">
+              ${escapeHtml(o.text)}
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    // =========================
+    // File → dataURL
+    // =========================
+    function readFileAsDataURL(file){
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ""));
+        r.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+        r.readAsDataURL(file);
+      });
+    }
+
+    // =========================
+    // Viewer stage render (3 slots)
+    // =========================
+    function renderStageEmpty(msg){
+      placeholder.classList.remove("hidden");
+      placeholder.querySelector(".t").textContent = msg || "課を選択してください";
+
+      slotPrev.innerHTML = "";
+      slotCur.innerHTML  = "";
+      slotNext.innerHTML = "";
+
+      viewerOverlay.innerHTML = "";
+      updateFirstLine(null);
+
+      setSlotX(slotPrev, -100);
+      setSlotX(slotCur, 0);
+      setSlotX(slotNext, 100);
+
+      reel.classList.remove("shuffling");
+      isShuffling = false;
+    }
+
+    function setSlotContent(slotEl, item){
+      if(!item){
+        slotEl.innerHTML = "";
+        return;
+      }
+
+      if(isSpecialItem(item)){
+        const raw = (item.talk || "").trim() || "（未登録）";
+        slotEl.innerHTML = `
+          <div class="specialCard" aria-label="special-card">
+            <div class="specialBadge">SPECIAL</div>
+            <div class="specialCardInner">${toTalkHtml(raw)}</div>
+          </div>
+        `;
+        return;
+      }
+
+      if(isComboItem(item)){
+        const imgs = Array.isArray(item.images) ? item.images.filter(Boolean) : [];
+        const parts = imgs.length ? imgs : (item.dataUrl ? [item.dataUrl] : []);
+        const n = Math.max(1, parts.length || 1);
+        slotEl.innerHTML = `
+          <div class="comboBadge">COMBO ${parts.length}</div>
+          <div class="comboStrip" aria-label="combo-card" style="--comboN:${n}">
+            ${parts.map(u=>`
+              <div class="part"><img src="${escapeHtml(u)}" alt=""></div>
+            `).join("")}
+          </div>
+        `;
+        return;
+      }
+
+      slotEl.innerHTML = item?.dataUrl
+        ? `<img src="${escapeHtml(item.dataUrl)}" alt="">`
+        : "";
+    }
+
+    function setSlotX(el, percent){
+      el.style.transform = `translate3d(${percent}%,0,0)`;
+    }
+
+    function showOneItemInstant(item){
+      placeholder.classList.toggle("hidden", !!item);
+      if(!item){
+        slotPrev.innerHTML = "";
+        slotCur.innerHTML  = "";
+        slotNext.innerHTML = "";
+        viewerOverlay.innerHTML = "";
+        updateFirstLine(null);
+        currentItem = null;
+        currentIndex = -1;
+        return;
+      }
+      currentItem = item;
+      currentIndex = lessonItems.findIndex(x => x.id === item.id);
+
+      setSlotContent(slotCur, item);
+      renderViewerOverlays(item);
+      updateFirstLine(item);
+
+      slotPrev.style.transition = "none";
+      slotCur.style.transition = "none";
+      slotNext.style.transition = "none";
+
+      setSlotX(slotPrev, -100);
+      setSlotX(slotCur, 0);
+      setSlotX(slotNext, 100);
+    }
+
+    function pickRandomIndexAvoidSame(lastIndex){
+      const n = lessonItems.length;
+      if(n <= 1) return 0;
+      let idx = Math.floor(Math.random() * n);
+      if(Number.isFinite(lastIndex) && lastIndex >= 0 && idx === lastIndex){
+        idx = (idx + 1) % n;
+      }
+      return idx;
+    }
+
+    function pickNextItemAvoidSame(){
+      if(!lessonItems.length) return null;
+      if(lessonItems.length === 1) return lessonItems[0];
+
+      if(currentIndex < 0 && currentItem?.id){
+        currentIndex = lessonItems.findIndex(x => x.id === currentItem.id);
+      }
+      const idx = pickRandomIndexAvoidSame(currentIndex);
+      return lessonItems[idx] || lessonItems[0];
+    }
+
+    async function preloadItemImage(item){
+      try{
+        if(!item) return;
+        if(isSpecialItem(item)) return;
+
+        if(isComboItem(item)){
+          const imgs = Array.isArray(item.images) ? item.images.filter(Boolean) : [];
+          const targets = imgs.slice(0,2);
+          for(const u of targets){
+            const img = new Image();
+            img.decoding = "async";
+            img.src = u;
+            if(img.decode){
+              await img.decode();
+            }else{
+              await new Promise((res)=>{ img.onload = ()=>res(); img.onerror = ()=>res(); });
+            }
+          }
+          return;
+        }
+
+        if(!item?.dataUrl) return;
+        const img = new Image();
+        img.decoding = "async";
+        img.src = item.dataUrl;
+        if(img.decode){
+          await img.decode();
+        }else{
+          await new Promise((res)=>{ img.onload = ()=>res(); img.onerror = ()=>res(); });
+        }
+      }catch(_){}
+    }
+
+    function animateTranslateStep({fromX, toX, durationMs, onFrame, token}){
+      return new Promise((resolve) => {
+        const start = performance.now();
+        const dur = Math.max(1, durationMs);
+
+        const skew = getCssNumber("--shuffleSkewDeg", 0.0);
+
+        function tick(now){
+          if(token !== shuffleToken){ resolve(false); return; }
+
+          const t = Math.min(1, (now - start) / dur);
+          const t2 = (t < 0.86) ? (t / 0.86) : (1 - Math.pow(1 - (t - 0.86) / 0.14, 2)) * 0.14 + 0.86;
+          const x = fromX + (toX - fromX) * t2;
+
+          if(skew > 0){
+            reel.style.transform = `translateZ(0) skewX(${(toX>fromX? -skew : skew) * (1 - Math.abs(0.5 - t2) * 2)}deg)`;
+          }else{
+            reel.style.transform = "translateZ(0)";
+          }
+
+          onFrame?.(x, t2);
+
+          if(t < 1){
+            requestAnimationFrame(tick);
+          }else{
+            reel.style.transform = "translateZ(0)";
+            resolve(true);
+          }
+        }
+        requestAnimationFrame(tick);
+      });
+    }
+
+    async function shuffleLoop(direction){
+      if(isShuffling) return;
+      if(isHolding) return;
+      if(!lessonItems.length) return;
+
+      isShuffling = true;
+      reel.classList.add("shuffling");
+      hideTalk();
+
+      const token = ++shuffleToken;
+
+      if(!currentItem){
+        const first = pickNextItemAvoidSame() || lessonItems[0];
+        showOneItemInstant(first);
+        await preloadItemImage(first);
+      }
+
+      let totalMs = getCssNumber("--shuffleTotalMs", 420);
+      totalMs = Math.max(120, Math.min(1200, Math.floor(totalMs)));
+
+      let steps = Math.floor(getCssNumber("--shuffleSteps", 10));
+      steps = Math.max(8, Math.min(24, steps));
+
+      const minStepMs = 22;
+      let stepMs = Math.floor(totalMs / steps);
+      stepMs = Math.max(minStepMs, stepMs);
+      totalMs = stepMs * steps;
+
+      const flowToRight = (direction === "right");
+      const incomingFrom = flowToRight ? -100 : 100;
+      const outgoingTo   = flowToRight ? 100  : -100;
+      const prevPark = -incomingFrom;
+
+      try{
+        for(let i=0; i<steps; i++){
+          if(token !== shuffleToken) return;
+
+          const isLast = (i === steps - 1);
+          const nextItem = pickNextItemAvoidSame() || currentItem;
+
+          await preloadItemImage(nextItem);
+          if(token !== shuffleToken) return;
+
+          setSlotContent(slotNext, nextItem);
+
+          slotPrev.style.transition = "none";
+          slotCur.style.transition  = "none";
+          slotNext.style.transition = "none";
+
+          setSlotX(slotPrev, prevPark);
+          setSlotX(slotCur, 0);
+          setSlotX(slotNext, incomingFrom);
+
+          void slotCur.offsetWidth;
+
+          const ok = await animateTranslateStep({
+            fromX: 0,
+            toX: outgoingTo,
+            durationMs: stepMs,
+            token,
+            onFrame: (x)=>{
+              setSlotX(slotCur, x);
+              setSlotX(slotNext, x - outgoingTo);
+              setSlotX(slotPrev, prevPark);
+            }
+          });
+          if(!ok) return;
+
+          slotCur.innerHTML = slotNext.innerHTML;
+
+          setSlotX(slotPrev, -100);
+          setSlotX(slotCur, 0);
+          setSlotX(slotNext, 100);
+
+          if(isLast){
+            currentItem = nextItem;
+            currentIndex = lessonItems.findIndex(x => x.id === nextItem.id);
+            renderViewerOverlays(nextItem);
+            updateFirstLine(nextItem);
+          }
+        }
+      } finally {
+        if(token === shuffleToken){
+          reel.classList.remove("shuffling");
+          isShuffling = false;
+        }
+      }
+    }
+
+    // =========================
+    // Long press (viewer show talk) - 通常/連結カードはOK、スペシャルは常時
+    // =========================
+    function showTalk(){
+      if(!currentItem) return;
+      if(isSpecialItem(currentItem)) return;
+
+      const raw = (currentItem.talk || "").trim() || "（未登録）";
+      firstLineBox.classList.add("expanded");
+      firstLineText.innerHTML = toTalkHtml(raw);
+    }
+
+    function hideTalk(){
+      isHolding = false;
+      if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+
+      if(currentItem){
+        updateFirstLine(currentItem);
+      }else{
+        firstLineBox.classList.remove("expanded");
+        firstLineText.textContent = "";
+      }
+    }
+
+    function startHoldTimer(){
+      if(!currentItem) return;
+      if(isSpecialItem(currentItem)) return;
+
+      if(holdTimer) clearTimeout(holdTimer);
+      const ms = getCssNumber("--holdMs", 260);
+      holdTimer = setTimeout(()=>{
+        holdTimer = null;
+        isHolding = true;
+        showTalk();
+      }, ms);
+    }
+
+    // =========================
+    // Swipe + hold pointer events (viewer)
+    // =========================
+    function onPointerDown(e){
+      if(isAdminSignedIn()) return;
+      if(e.pointerType === "mouse" && e.button !== 0) return;
+
+      stage.setPointerCapture?.(e.pointerId);
+      pDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+
+      startHoldTimer();
+    }
+    function onPointerMove(e){
+      if(!pDown) return;
+      const dx = e.clientX - pDown.x;
+      const dy = e.clientY - pDown.y;
+
+      if(Math.abs(dx) > 8 || Math.abs(dy) > 8){
+        if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+      }
+    }
+    function onPointerUp(e){
+      if(!pDown) return;
+      const dx = e.clientX - pDown.x;
+      const dy = e.clientY - pDown.y;
+
+      if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+
+      if(isHolding){
+        hideTalk();
+        pDown = null;
+        return;
+      }
+
+      if(Math.abs(dx) >= SWIPE_MIN_X && Math.abs(dy) <= SWIPE_MAX_Y){
+        const dir = (dx > 0) ? "right" : "left";
+        shuffleLoop(dir);
+      }
+
+      pDown = null;
+    }
+    function onPointerCancel(){
+      if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; }
+      hideTalk();
+      pDown = null;
+    }
+
+    // =========================
+    // Modal: long press preview (画像カードのみ)
+    // =========================
+    function hideModalTalkAll(){
+      talkCanvasShield.classList.remove("show");
+      imgCanvasShield.classList.remove("show");
+      modalHolding = false;
+      modalHoldStart = null;
+      if(modalHoldTimer){ clearTimeout(modalHoldTimer); modalHoldTimer = null; }
+    }
+
+    function showModalTalkInto(which){
+      const raw = (markersFromPaper()?.trim() || editTalkMarkers?.trim() || "（未登録）");
+      const html = toTalkHtml(raw);
+
+      if(which === "talkCanvas"){
+        talkCanvasTalkText.innerHTML = html;
+        talkCanvasShield.classList.add("show");
+        imgCanvasShield.classList.remove("show");
+      }else{
+        imgCanvasTalkText.innerHTML = html;
+        imgCanvasShield.classList.add("show");
+        talkCanvasShield.classList.remove("show");
+      }
+      modalHolding = true;
+    }
+
+    function startModalHold(which){
+      if(modalHoldTimer) clearTimeout(modalHoldTimer);
+      const ms = getCssNumber("--holdMs", 260);
+      modalHoldTimer = setTimeout(()=>{
+        modalHoldTimer = null;
+        showModalTalkInto(which);
+      }, ms);
+    }
+
+    function bindModalHoldToImageOnly(el, which){
+      if(!el) return;
+      el.addEventListener("pointerdown", (e)=>{
+        if(!editModal.classList.contains("show")) return;
+        if(e.pointerType === "mouse" && e.button !== 0) return;
+
+        // ✅ スペシャル/連結は長押しプレビュー不要（会話編集のみ）
+        if(editTarget?.isSpecial || editTarget?.isCombo) return;
+
+        hideModalTalkAll();
+        modalHoldStart = { x: e.clientX, y: e.clientY };
+        startModalHold(which);
+      });
+
+      el.addEventListener("pointermove", (e)=>{
+        if(!modalHoldTimer || !modalHoldStart) return;
+        const dx = e.clientX - modalHoldStart.x;
+        const dy = e.clientY - modalHoldStart.y;
+        if(Math.hypot(dx,dy) >= MODAL_HOLD_CANCEL_PX){
+          clearTimeout(modalHoldTimer);
+          modalHoldTimer = null;
+        }
+      });
+
+      el.addEventListener("pointerup", ()=>{
+        if(modalHoldTimer){ clearTimeout(modalHoldTimer); modalHoldTimer = null; }
+        if(modalHolding) hideModalTalkAll();
+      });
+      el.addEventListener("pointercancel", ()=>{
+        if(modalHoldTimer){ clearTimeout(modalHoldTimer); modalHoldTimer = null; }
+        hideModalTalkAll();
+      });
+      el.addEventListener("contextmenu", (e)=>e.preventDefault());
+    }
+
+    // =========================
+    // DB: Load lesson items for viewer
+    // ✅ orderで並び
+    // =========================
+    async function loadLessonItemsForViewer(lessonKey){
+      try{
+        if(!db) return;
+
+        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`);
+        const snap = await ref.get();
+        const arr = [];
+        snap.forEach(child=>{
+          const v = child.val() || {};
+          const type = String(v.type || (v.dataUrl ? "image" : "image"));
+
+          if(type === "special"){
+            arr.push({
+              id: child.key,
+              type,
+              dataUrl: "",
+              images: [],
+              talk: v.talk || "",
+              overlays: [],
+              createdAt: Number(v.createdAt || 0) || 0,
+              order: Number(v.order || v.createdAt || 0) || 0,
+              createdBy: v.createdBy || "",
+              createdByEmail: v.createdByEmail || ""
+            });
+            return;
+          }
+
+          if(type === "combo"){
+            const images = Array.isArray(v.images) ? v.images : [];
+            if(images.length){
+              arr.push({
+                id: child.key,
+                type,
+                dataUrl: "",
+                images,
+                talk: v.talk || "",
+                overlays: [],
+                createdAt: Number(v.createdAt || 0) || 0,
+                order: Number(v.order || v.createdAt || 0) || 0,
+                createdBy: v.createdBy || "",
+                createdByEmail: v.createdByEmail || ""
+              });
+            }
+            return;
+          }
+
+          if(v.dataUrl){
+            arr.push({
+              id: child.key,
+              type: "image",
+              dataUrl: v.dataUrl || "",
+              images: [],
+              talk: v.talk || "",
+              overlays: v.overlays || [],
+              createdAt: Number(v.createdAt || 0) || 0,
+              order: Number(v.order || v.createdAt || 0) || 0,
+              createdBy: v.createdBy || "",
+              createdByEmail: v.createdByEmail || ""
+            });
+          }
+        });
+
+        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        lessonItems = arr;
+
+        currentItem = null;
+        currentIndex = -1;
+
+        if(!lessonItems.length){
+          renderStageEmpty("この課にはカードがありません");
+          placeholder.querySelector(".s").textContent = "管理画面で画像カード/スペシャルカード/連結カードを登録してください。";
+          return;
+        }
+
+        const first = lessonItems[pickRandomIndexAvoidSame(-1)];
+        await preloadItemImage(first);
+        showOneItemInstant(first);
+
+      }catch(err){
+        renderStageEmpty("読み込みエラー");
+        placeholder.querySelector(".s").textContent = String(err?.message || err || "");
+      }
+    }
+
+    // =========================
+    // Admin list rendering
+    // =========================
+    function updateSelectButtons(){
+      btnClearSelect.disabled = !selectMode || selectedIds.size === 0;
+      btnCombine.disabled = !(selectMode && selectedIds.size >= 2);
+      btnToggleSelect.classList.toggle("primary", selectMode);
+      btnToggleSelect.textContent = selectMode ? `連結モード（${selectedIds.size}）` : "連結モード";
+    }
+
+    function renderAdminList(items){
+      lastRendered = items || [];
+      listEl.innerHTML = lastRendered.map(it => {
+        const canDelete = isAdminSignedIn() && it.createdBy === currentUser.uid;
+        const isSp = (it.type === "special");
+        const isCombo = (it.type === "combo");
+        const overlayCount = Array.isArray(it.overlays) ? it.overlays.length : 0;
+
+        let thumbHtml = "";
+        if(isSp){
+          thumbHtml = `<div class="thumbSpecial"><div class="box">${escapeHtml(talkPlainPreview(it.talk, 160))}</div></div>`;
+        }else if(isCombo){
+          const imgs = Array.isArray(it.images) ? it.images.filter(Boolean) : [];
+          const show = imgs.slice(0,4);
+          const n = Math.max(1, show.length || 1);
+          thumbHtml = `
+            <div class="thumbCombo" style="--comboN:${n}">
+              ${show.map(u=>`<div class="p"><img src="${escapeHtml(u)}" alt=""></div>`).join("")}
+            </div>
+          `;
+        }else{
+          thumbHtml = `<img src="${escapeHtml(it.dataUrl)}" alt="">`;
+        }
+
+        const badge = isSp
+          ? `SPECIAL / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`
+          : isCombo
+            ? `COMBO:${escapeHtml(String((it.images||[]).length))} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`
+            : `文字:${overlayCount} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`;
+
+        const selClass = selectedIds.has(it.id) ? "selected" : "";
+        const selModeClass = selectMode ? "selMode" : "";
+
+        return `
+          <article class="card ${selModeClass} ${selClass}" data-id="${escapeHtml(it.id)}" draggable="${selectMode ? "false" : "true"}" title="${selectMode ? "クリックで選択" : "クリックで編集 / ドラッグで並び替え"}">
+            <div class="thumb">
+              ${thumbHtml}
+              <div class="thumbBadge">${badge}</div>
+            </div>
+
+            <div class="selCheck" aria-hidden="${selectMode ? "false" : "true"}">${selectedIds.has(it.id) ? "✓" : ""}</div>
+
+            <div class="meta">
+              <div class="sub">
+                <span>${escapeHtml(fmtTime(it.createdAt))}</span>
+                ${it.createdByEmail ? `<span>• ${escapeHtml(it.createdByEmail)}</span>` : ""}
+              </div>
+              <div class="sub" title="${escapeHtml(stripMarkers(it.talk || ""))}">
+                <span>会話：${escapeHtml(talkPlainPreview(it.talk))}</span>
+              </div>
+              <div class="actions">
+                ${canDelete ? `<button class="btn small danger" data-action="del">削除</button>` : ""}
+              </div>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      emptyEl.classList.toggle("hidden", lastRendered.length > 0);
+      updateSelectButtons();
+    }
+
+    async function loadAdminList(){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        const lessonKey = listLesson.value;
+
+        setStatus2("読み込み中...", null);
+
+        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`);
+        const snap = await ref.get();
+        const arr = [];
+        snap.forEach(child=>{
+          const v = child.val() || {};
+          const type = String(v.type || (v.dataUrl ? "image" : "image"));
+
+          if(type === "special"){
+            arr.push({
+              id: child.key,
+              type,
+              dataUrl: "",
+              images: [],
+              talk: v.talk || "",
+              overlays: [],
+              createdAt: Number(v.createdAt || 0) || 0,
+              order: Number(v.order || v.createdAt || 0) || 0,
+              createdBy: v.createdBy || "",
+              createdByEmail: v.createdByEmail || ""
+            });
+            return;
+          }
+
+          if(type === "combo"){
+            const images = Array.isArray(v.images) ? v.images : [];
+            arr.push({
+              id: child.key,
+              type,
+              dataUrl: "",
+              images,
+              talk: v.talk || "",
+              overlays: [],
+              createdAt: Number(v.createdAt || 0) || 0,
+              order: Number(v.order || v.createdAt || 0) || 0,
+              createdBy: v.createdBy || "",
+              createdByEmail: v.createdByEmail || ""
+            });
+            return;
+          }
+
+          if(v.dataUrl){
+            arr.push({
+              id: child.key,
+              type: "image",
+              dataUrl: v.dataUrl || "",
+              images: [],
+              talk: v.talk || "",
+              overlays: v.overlays || [],
+              createdAt: Number(v.createdAt || 0) || 0,
+              order: Number(v.order || v.createdAt || 0) || 0,
+              createdBy: v.createdBy || "",
+              createdByEmail: v.createdByEmail || ""
+            });
+          }
+        });
+
+        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        renderAdminList(arr);
+
+        setStatus2(`OK（${arr.length}件）`, "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+      }catch(err){
+        setStatus2(err?.message || String(err || ""), "err");
+        renderAdminList([]);
+      }
+    }
+
+    // =========================
+    // Upload Queue
+    // =========================
+    function makeId(){
+      return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+    }
+
+    function isImageFile(file){
+      return !!file && typeof file.type === "string" && file.type.startsWith("image/");
+    }
+
+    function addFilesToQueue(fileList){
+      const files = Array.from(fileList || []).filter(isImageFile);
+      if(!files.length) return;
+
+      const maxEachBytes = 2.2 * 1024 * 1024;
+
+      for(const file of files){
+        const id = makeId();
+        const previewUrl = URL.createObjectURL(file);
+
+        uploadQueue.push({
+          id,
+          file,
+          name: file.name || "image",
+          size: file.size || 0,
+          type: file.type || "",
+          previewUrl,
+          progress: 0,
+          error: (file.size > maxEachBytes) ? "サイズが大きすぎます（2MB以下推奨）" : ""
+        });
+      }
+
+      renderQueue();
+    }
+
+    function removeQueueItem(id){
+      const i = uploadQueue.findIndex(x=>x.id===id);
+      if(i>=0){
+        try{ URL.revokeObjectURL(uploadQueue[i].previewUrl); }catch(_){}
+        uploadQueue.splice(i,1);
+        renderQueue();
+      }
+    }
+
+    function clearQueue(){
+      for(const it of uploadQueue){
+        try{ URL.revokeObjectURL(it.previewUrl); }catch(_){}
+      }
+      uploadQueue = [];
+      renderQueue();
+    }
+
+    function setQueueProgress(id, pct){
+      const it = uploadQueue.find(x=>x.id===id);
+      if(!it) return;
+      it.progress = Math.max(0, Math.min(100, Math.floor(pct)));
+      const bar = queueBody.querySelector(`[data-q="${CSS.escape(id)}"] .prog > div`);
+      if(bar) bar.style.width = `${it.progress}%`;
+    }
+
+    function setQueueError(id, msg){
+      const it = uploadQueue.find(x=>x.id===id);
+      if(!it) return;
+      it.error = msg || "";
+      renderQueue();
+    }
+
+    function renderQueue(){
+      queueCount.textContent = String(uploadQueue.length);
+      queuePanel.classList.toggle("show", uploadQueue.length > 0);
+
+      queueBody.innerHTML = uploadQueue.map(it => `
+        <div class="qItem" data-q="${escapeHtml(it.id)}">
+          <div class="qThumb"><img src="${escapeHtml(it.previewUrl)}" alt=""></div>
+          <div class="qMeta">
+            <div class="qLine" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
+            <div class="qLine">${escapeHtml(fmtBytes(it.size))}${it.error ? ` • <span style="color:#fb7185;font-weight:900">${escapeHtml(it.error)}</span>` : ""}</div>
+            <div class="prog"><div style="width:${Math.floor(it.progress||0)}%"></div></div>
+            <div class="qBtns">
+              <button class="btn small danger" data-q-action="rm">外す</button>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // =========================
+    // Admin: upload images
+    // =========================
+    async function uploadImagesBatch(){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const lessonKey = adminLesson.value;
+        const talk = (fTalkQuick.value || "").trim();
+
+        if(uploadQueue.length === 0){
+          if(fFile.files && fFile.files.length){
+            addFilesToQueue(fFile.files);
+          }
+        }
+        if(uploadQueue.length === 0){
+          throw new Error("画像ファイルを追加してください（複数可）。");
+        }
+
+        const targets = uploadQueue.filter(it => !it.error);
+        if(targets.length === 0){
+          throw new Error("アップロードできる画像がありません（サイズなどを確認）。");
+        }
+
+        setStatus(`アップロード中...（${targets.length}件）`, null);
+
+        let okCount = 0;
+        for(const it of targets){
+          try{
+            setQueueProgress(it.id, 5);
+
+            const dataUrl = await readFileAsDataURL(it.file);
+
+            const approxBytes = Math.floor((dataUrl.length || 0) * 0.75);
+            const maxPayloadBytes = 4.5 * 1024 * 1024;
+            if(approxBytes > maxPayloadBytes){
+              throw new Error("dataURLが大きすぎます（画像を圧縮してください）。");
+            }
+
+            setQueueProgress(it.id, 45);
+
+            const payload = {
+              type: "image",
+              talk,
+              dataUrl,
+              overlays: [],
+              createdAt: firebase.database.ServerValue.TIMESTAMP,
+              order: firebase.database.ServerValue.TIMESTAMP,
+              createdBy: currentUser.uid,
+              createdByEmail: currentUser.email || ""
+            };
+
+            const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`).push();
+            await ref.set(payload);
+
+            setQueueProgress(it.id, 100);
+            okCount++;
+
+          }catch(err){
+            setQueueError(it.id, err?.message || String(err||""));
+            setQueueProgress(it.id, 0);
+          }
+        }
+
+        fFile.value = "";
+
+        uploadQueue = uploadQueue.filter(it => {
+          const done = (it.progress === 100);
+          if(done){
+            try{ URL.revokeObjectURL(it.previewUrl); }catch(_){}
+          }
+          return !done;
+        });
+        renderQueue();
+
+        if(okCount > 0){
+          setStatus(`アップロード完了 ✅（成功 ${okCount}件）`, "ok");
+          setTimeout(()=>setStatus("", null), 900);
+          if(listLesson.value === lessonKey) loadAdminList();
+        }else{
+          throw new Error("すべて失敗しました（サイズ/DBルール/ネットワークを確認）。");
+        }
+
+      }catch(err){
+        setStatus(err?.message || String(err || ""), "err");
+      }
+    }
+
+    // =========================
+    // Admin: add special card
+    // =========================
+    async function addSpecialCard(){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const lessonKey = spLesson.value;
+        const talk = (spTalk.value || "").trim();
+
+        if(!talk){
+          throw new Error("スペシャルカードの会話文を入力してください。");
+        }
+
+        setStatusSp("保存中...", null);
+
+        const payload = {
+          type: "special",
+          talk,
+          dataUrl: "",
+          images: [],
+          overlays: [],
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          order: firebase.database.ServerValue.TIMESTAMP,
+          createdBy: currentUser.uid,
+          createdByEmail: currentUser.email || ""
+        };
+
+        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`).push();
+        await ref.set(payload);
+
+        spTalk.value = "";
+        setStatusSp("追加しました ✅", "ok");
+        setTimeout(()=>setStatusSp("", null), 900);
+
+        if(listLesson.value === lessonKey) loadAdminList();
+
+      }catch(err){
+        setStatusSp(err?.message || String(err || ""), "err");
+      }
+    }
+
+    async function deleteItem(lessonKey, id){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const hit = lastRendered.find(x => x.id === id);
+        if(!hit) throw new Error("対象が見つかりません。");
+        if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ削除できます。");
+
+        const ok = confirm("削除しますか？");
+        if(!ok) return;
+
+        await db.ref(`${PATH_LESSONS}/${lessonKey}/items/${id}`).remove();
+        setStatus2("削除しました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+        loadAdminList();
+      }catch(err){
+        setStatus2(err?.message || String(err || ""), "err");
+      }
+    }
+
+    // =========================
+    // ✅ 連結カードを作成（選択2枚以上）
+    // =========================
+    async function createComboFromSelection(){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const lessonKey = listLesson.value;
+        const ids = [...selectedIds];
+        if(ids.length < 2) throw new Error("2枚以上選択してください。");
+
+        const items = ids.map(id => lastRendered.find(x => x.id === id)).filter(Boolean);
+
+        for(const it of items){
+          if(it.createdBy !== currentUser.uid){
+            throw new Error("連結は「自分が作成したカード」だけ可能です。");
+          }
+          if(it.type === "special"){
+            throw new Error("スペシャルカードは連結対象にできません。");
+          }
+        }
+
+        const images = [];
+        for(const it of items){
+          if(it.type === "combo"){
+            const arr = Array.isArray(it.images) ? it.images : [];
+            for(const u of arr) if(u) images.push(u);
+          }else{
+            if(it.dataUrl) images.push(it.dataUrl);
+          }
+        }
+        if(images.length < 2) throw new Error("画像が足りません。");
+
+        const talks = items.map(it => String(it.talk || "").trim()).filter(s=>s);
+        const talk = talks.join("\n\n— — —\n\n");
+
+        const minOrder = Math.min(...items.map(it => Number(it.order || it.createdAt || Date.now())));
+        const payload = {
+          type: "combo",
+          images,
+          talk,
+          dataUrl: "",
+          overlays: [],
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          order: minOrder || firebase.database.ServerValue.TIMESTAMP,
+          createdBy: currentUser.uid,
+          createdByEmail: currentUser.email || ""
+        };
+
+        setStatus2("連結カードを保存中...", null);
+        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`).push();
+        await ref.set(payload);
+
+        selectedIds.clear();
+        updateSelectButtons();
+        await loadAdminList();
+
+        setStatus2("連結して保存しました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+
+      }catch(err){
+        setStatus2(err?.message || String(err || ""), "err");
+      }
+    }
+
+    // =========================
+    // Preview underline editing (talk)
+    // =========================
+    function normalizePaperDom(){
+      const walker = document.createTreeWalker(editPaper, NodeFilter.SHOW_ELEMENT, null);
+      while(walker.nextNode()){
+        const el = walker.currentNode;
+        const tag = el.tagName?.toLowerCase?.() || "";
+        if(tag === "span"){
+          if(!(el.classList.contains("blueu") || el.classList.contains("greenu") || el.classList.contains("blacku"))){
+            el.replaceWith(...el.childNodes);
+          }
+        }else if(tag === "br"){
+          // OK
+        }else if(tag === "div" || tag === "p"){
+          const frag = document.createDocumentFragment();
+          frag.append(...el.childNodes);
+          const br = document.createElement("br");
+          el.replaceWith(frag, br);
+        }else{
+          el.replaceWith(...el.childNodes);
+        }
+      }
+    }
+
+    function getSelectionRangeInPaper(){
+      const sel = window.getSelection();
+      if(!sel || sel.rangeCount === 0) return null;
+      const range = sel.getRangeAt(0);
+      if(!editPaper.contains(range.commonAncestorContainer)) return null;
+      return range;
+    }
+
+    function rangeIntersectsNode(range, node){
+      try{
+        const r = document.createRange();
+        r.selectNodeContents(node);
+        return (
+          range.compareBoundaryPoints(Range.END_TO_START, r) < 0 &&
+          range.compareBoundaryPoints(Range.START_TO_END, r) > 0
+        );
+      }catch(_){
+        return false;
+      }
+    }
+
+    function selectionIntersectsClass(range, className){
+      const spans = [...editPaper.querySelectorAll(`span.${className}`)];
+      for(const sp of spans){
+        if(rangeIntersectsNode(range, sp)) return true;
+      }
+      return false;
+    }
+
+    function unwrapClassInRange(range, className){
+      const spans = [...editPaper.querySelectorAll(`span.${className}`)];
+      let changed = false;
+      for(const sp of spans){
+        if(rangeIntersectsNode(range, sp)){
+          sp.replaceWith(...sp.childNodes);
+          changed = true;
+        }
+      }
+      return changed;
+    }
+
+    function wrapRangeWithClass(range, className){
+      if(!range || range.collapsed) return false;
+
+      unwrapClassInRange(range, className);
+
+      const span = document.createElement("span");
+      span.className = className;
+
+      try{
+        const contents = range.extractContents();
+        span.appendChild(contents);
+        range.insertNode(span);
+
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        const r2 = document.createRange();
+        r2.selectNodeContents(span);
+        sel.addRange(r2);
+        return true;
+      }catch(_){
+        return false;
+      }
+    }
+
+    function markersFromPaper(){
+      normalizePaperDom();
+
+      function walk(node){
+        let out = "";
+        if(node.nodeType === Node.TEXT_NODE){
+          out += node.nodeValue || "";
+          return out;
+        }
+        if(node.nodeType !== Node.ELEMENT_NODE) return out;
+
+        const el = node;
+        const tag = el.tagName.toLowerCase();
+
+        if(tag === "br") return "\n";
+
+        if(tag === "span" && el.classList.contains("blueu")){
+          const inner = [...el.childNodes].map(walk).join("");
+          return `[[u]]${inner}[[/u]]`;
+        }
+        if(tag === "span" && el.classList.contains("greenu")){
+          const inner = [...el.childNodes].map(walk).join("");
+          return `[[g]]${inner}[[/g]]`;
+        }
+        if(tag === "span" && el.classList.contains("blacku")){
+          const inner = [...el.childNodes].map(walk).join("");
+          return `[[k]]${inner}[[/k]]`;
+        }
+
+        out += [...el.childNodes].map(walk).join("");
+        return out;
+      }
+
+      const text = [...editPaper.childNodes].map(walk).join("");
+      return text.replace(/\n{3,}$/g, "\n\n");
+    }
+
+    function syncUiFromMarkers(markers){
+      editTalkMarkers = String(markers || "");
+      editPaper.innerHTML = toTalkHtml(editTalkMarkers);
+    }
+
+    // =========================
+    // Image Text Editor (image only)
+    // =========================
+    function newOverlay(){
+      const id = makeId();
+      return {
+        id,
+        text: "文字",
+        x: 0.10,
+        y: 0.10,
+        w: 0.45,
+        h: 0.18,
+        font: 36,
+        color: "#ffffff",
+        bold: true,
+        shadow: true,
+        align: "left"
+      };
+    }
+
+    function getSelectedOverlay(){
+      return editOverlays.find(o => o.id === selectedOvId) || null;
+    }
+
+    function setSelectedOverlay(id){
+      selectedOvId = id || null;
+      renderEditOverlays();
+      syncControlsFromSelected();
+    }
+
+    function syncControlsFromSelected(){
+      const o = getSelectedOverlay();
+      const has = !!o;
+      btnDelText.disabled = !has;
+      ovFont.disabled = !has;
+      ovColor.disabled = !has;
+      ovBold.disabled = !has;
+      ovShadow.disabled = !has;
+      alignBtns.forEach(b=>b.disabled = !has);
+
+      if(!has){
+        ovFont.value = "36";
+        ovFontVal.textContent = "36";
+        ovColor.value = "#ffffff";
+        ovBold.classList.remove("active");
+        ovShadow.classList.add("active");
+        alignBtns.forEach(b=>b.classList.remove("active"));
+        return;
+      }
+
+      ovFont.value = String(o.font || 36);
+      ovFontVal.textContent = String(o.font || 36);
+      ovColor.value = o.color || "#ffffff";
+      ovBold.classList.toggle("active", !!o.bold);
+      ovShadow.classList.toggle("active", o.shadow !== false);
+      alignBtns.forEach(b=>{
+        b.classList.toggle("active", (b.getAttribute("data-align") || "left") === (o.align || "left"));
+      });
+    }
+
+    function renderEditOverlays(){
+      editOverlayLayer.innerHTML = "";
+
+      const overlays = sanitizeOverlays(editOverlays);
+      editOverlays = overlays;
+
+      for(const o of overlays){
+        const el = document.createElement("div");
+        el.className = "editOv";
+        if(o.id === selectedOvId) el.classList.add("selected");
+        el.setAttribute("data-ov", o.id);
+
+        el.style.left = `${(o.x*100).toFixed(4)}%`;
+        el.style.top = `${(o.y*100).toFixed(4)}%`;
+        el.style.width = `${(o.w*100).toFixed(4)}%`;
+        el.style.height = `${(o.h*100).toFixed(4)}%`;
+
+        const txt = document.createElement("div");
+        txt.className = "txt";
+        txt.contentEditable = "true";
+        txt.spellcheck = false;
+        txt.textContent = o.text || "";
+
+        txt.style.fontSize = `${o.font}px`;
+        txt.style.fontWeight = o.bold ? "900" : "700";
+        txt.style.color = o.color || "#fff";
+        txt.style.textAlign = o.align || "left";
+        txt.style.textShadow = (o.shadow !== false) ? "0 2px 8px rgba(0,0,0,.55)" : "none";
+
+        const handle = document.createElement("div");
+        handle.className = "handle";
+        handle.setAttribute("data-handle", "br");
+
+        el.appendChild(txt);
+        el.appendChild(handle);
+        editOverlayLayer.appendChild(el);
+      }
+
+      renderTalkTabPreview();
+    }
+
+    function percentFromPx(px, sizePx){
+      if(!Number.isFinite(px) || !Number.isFinite(sizePx) || sizePx <= 0) return 0;
+      return px / sizePx;
+    }
+
+    function clampOverlayWithinCanvas(o){
+      o.w = clamp01(o.w);
+      o.h = clamp01(o.h);
+
+      const minW = 0.06;
+      const minH = 0.05;
+      o.w = Math.max(minW, o.w);
+      o.h = Math.max(minH, o.h);
+
+      o.x = clamp01(o.x);
+      o.y = clamp01(o.y);
+
+      if(o.x + o.w > 1) o.x = Math.max(0, 1 - o.w);
+      if(o.y + o.h > 1) o.y = Math.max(0, 1 - o.h);
+    }
+
+    function updateOverlayTextFromDom(id){
+      const box = editOverlayLayer.querySelector(`[data-ov="${CSS.escape(id)}"] .txt`);
+      if(!box) return;
+      const o = editOverlays.find(x=>x.id===id);
+      if(!o) return;
+      o.text = box.textContent ?? "";
+    }
+
+    function startDrag(e, type, id){
+      const canvasRect = imgCanvas.getBoundingClientRect();
+      const o = editOverlays.find(x=>x.id===id);
+      if(!o) return;
+
+      dragState = {
+        type,
+        id,
+        startX: e.clientX,
+        startY: e.clientY,
+        base: {...o},
+        canvasRect
+      };
+      imgCanvas.setPointerCapture?.(e.pointerId);
+    }
+
+    function onCanvasPointerDown(e){
+      if(!editTarget) return;
+      if(editTarget.isSpecial || editTarget.isCombo) return;
+      if(e.pointerType === "mouse" && e.button !== 0) return;
+
+      const handle = e.target.closest?.(".handle");
+      const ovEl = e.target.closest?.(".editOv");
+      const isTxt = e.target.classList?.contains("txt");
+
+      if(handle && ovEl){
+        const id = ovEl.getAttribute("data-ov");
+        setSelectedOverlay(id);
+        startDrag(e, "resize", id);
+        e.preventDefault();
+        return;
+      }
+
+      if(ovEl){
+        const id = ovEl.getAttribute("data-ov");
+        setSelectedOverlay(id);
+
+        if(isTxt) return;
+
+        startDrag(e, "move", id);
+        e.preventDefault();
+        return;
+      }
+
+      setSelectedOverlay(null);
+    }
+
+    function onCanvasPointerMove(e){
+      if(!dragState) return;
+
+      const { type, id, startX, startY, base, canvasRect } = dragState;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      const cw = canvasRect.width;
+      const ch = canvasRect.height;
+
+      const o = editOverlays.find(x=>x.id===id);
+      if(!o) return;
+
+      if(type === "move"){
+        const pxX = base.x * cw + dx;
+        const pxY = base.y * ch + dy;
+        o.x = clamp01(percentFromPx(pxX, cw));
+        o.y = clamp01(percentFromPx(pxY, ch));
+        clampOverlayWithinCanvas(o);
+      }else if(type === "resize"){
+        const pxW = base.w * cw + dx;
+        const pxH = base.h * ch + dy;
+        o.w = clamp01(percentFromPx(pxW, cw));
+        o.h = clamp01(percentFromPx(pxH, ch));
+        clampOverlayWithinCanvas(o);
+      }
+
+      const el = editOverlayLayer.querySelector(`[data-ov="${CSS.escape(id)}"]`);
+      if(el){
+        el.style.left = `${(o.x*100).toFixed(4)}%`;
+        el.style.top = `${(o.y*100).toFixed(4)}%`;
+        el.style.width = `${(o.w*100).toFixed(4)}%`;
+        el.style.height = `${(o.h*100).toFixed(4)}%`;
+      }
+
+      renderTalkTabPreview();
+    }
+
+    function onCanvasPointerUp(){
+      dragState = null;
+    }
+
+    function applySelectedStyle(patch){
+      const o = getSelectedOverlay();
+      if(!o) return;
+      Object.assign(o, patch);
+      clampOverlayWithinCanvas(o);
+      renderEditOverlays();
+      syncControlsFromSelected();
+    }
+
+    function addTextOverlay(){
+      if(!editTarget || editTarget.isSpecial || editTarget.isCombo) return;
+      const o = newOverlay();
+      editOverlays.push(o);
+      setSelectedOverlay(o.id);
+      renderEditOverlays();
+      syncControlsFromSelected();
+
+      requestAnimationFrame(()=>{
+        const t = editOverlayLayer.querySelector(`[data-ov="${CSS.escape(o.id)}"] .txt`);
+        t?.focus?.();
+        try{
+          const r = document.createRange();
+          r.selectNodeContents(t);
+          r.collapse(false);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(r);
+        }catch(_){}
+      });
+    }
+
+    function deleteSelectedOverlay(){
+      const o = getSelectedOverlay();
+      if(!o) return;
+      editOverlays = editOverlays.filter(x=>x.id!==o.id);
+      selectedOvId = null;
+      renderEditOverlays();
+      syncControlsFromSelected();
+    }
+
+    // =========================
+    // Open editor (combined)
+    // =========================
+    function setModalPreviewForType(isSp, isCombo, talkMarkers){
+      talkPreviewHint.textContent = isSp
+        ? "※スペシャル：会話は常時表示"
+        : isCombo
+          ? "※連結カード：会話編集のみ（画像はプレビュー表示）"
+          : "※画像カード：長押し中だけ会話表示";
+
+      tabImgText.classList.toggle("hidden", (isSp || isCombo));
+      if(isSp || isCombo){
+        sectionImgText.classList.add("hidden");
+      }
+      hideModalTalkAll();
+
+      // reset
+      talkComboPreview.classList.remove("show");
+      talkComboPreview.innerHTML = "";
+      imgComboPreview.classList.remove("show");
+      imgComboPreview.innerHTML = "";
+
+      if(isSp){
+        talkCanvasImg.src = "";
+        talkCanvasImg.style.display = "none";
+        talkNoImgCard.classList.add("show");
+        talkNoImgText.innerHTML = toTalkHtml(talkMarkers?.trim() || "（未登録）");
+        talkCanvasShield.classList.remove("show");
+      }else if(isCombo){
+        talkNoImgCard.classList.remove("show");
+        talkCanvasImg.src = "";
+        talkCanvasImg.style.display = "none";
+        talkComboPreview.classList.add("show");
+        // 中身は openEditor → renderTalkTabPreview で入る
+      }else{
+        talkNoImgCard.classList.remove("show");
+        talkCanvasImg.style.display = "block";
+      }
+
+      if(isSp){
+        imgCanvasImg.src = "";
+        imgCanvasImg.style.display = "none";
+        imgNoImgCard.classList.add("show");
+        imgNoImgText.innerHTML = toTalkHtml(talkMarkers?.trim() || "（未登録）");
+      }else if(isCombo){
+        imgCanvasImg.src = "";
+        imgCanvasImg.style.display = "none";
+        imgNoImgCard.classList.add("show");
+        imgNoImgText.innerHTML = toTalkHtml(talkMarkers?.trim() || "（未登録）");
+      }else{
+        imgCanvasImg.style.display = "block";
+        imgNoImgCard.classList.remove("show");
+      }
+    }
+
+    function openEditor(lessonKey, id){
+      const hit = lastRendered.find(x => x.id === id);
+      if(!hit) return;
+
+      if(!isAdminSignedIn()){
+        editErr.textContent = "ログインしてください。";
+        editErr.classList.add("show");
+        return;
+      }
+      if(hit.createdBy !== currentUser.uid){
+        editErr.textContent = "自分が作成したカードだけ編集できます。";
+        editErr.classList.add("show");
+        return;
+      }
+
+      const isSp = (hit.type === "special");
+      const isCombo = (hit.type === "combo");
+
+      editTarget = {
+        lessonKey,
+        id,
+        isSpecial: isSp,
+        isCombo,
+        comboImages: isCombo ? (Array.isArray(hit.images) ? hit.images : []) : []
+      };
+
+      syncUiFromMarkers(String(hit.talk || ""));
+      setModalPreviewForType(isSp, isCombo, String(hit.talk || ""));
+
+      if(isSp || isCombo){
+        imgCanvasImg.src = "";
+        editOverlays = [];
+        selectedOvId = null;
+        renderEditOverlays();
+        syncControlsFromSelected();
+      }else{
+        imgCanvasImg.src = hit.dataUrl || "";
+        editOverlays = sanitizeOverlays(hit.overlays || []);
+        selectedOvId = (editOverlays[0]?.id) ? editOverlays[0].id : null;
+        renderEditOverlays();
+        syncControlsFromSelected();
+      }
+
+      editItemInfo.textContent = `${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
+      talkItemInfo.textContent = `${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
+
+      renderTalkTabPreview();
+
+      setEditTab("talk");
+      showEditModal(true);
+    }
+
+    // =========================
+    // Save editor (talk + overlays)
+    // =========================
+    async function saveEditedAll(){
+      try{
+        if(!editTarget) return;
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        editTalkMarkers = markersFromPaper();
+
+        if(!editTarget.isSpecial && !editTarget.isCombo){
+          for(const o of editOverlays){
+            updateOverlayTextFromDom(o.id);
+          }
+        }
+
+        const overlaysToSave = (editTarget.isSpecial || editTarget.isCombo) ? [] : sanitizeOverlays(editOverlays);
+
+        const { lessonKey, id } = editTarget;
+        const hit = lastRendered.find(x => x.id === id);
+        if(!hit) throw new Error("対象が見つかりません。");
+        if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ編集できます。");
+
+        const updates = {
+          talk: editTalkMarkers,
+          overlays: overlaysToSave
+        };
+
+        await db.ref(`${PATH_LESSONS}/${lessonKey}/items/${id}`).update(updates);
+
+        showEditModal(false);
+        editTarget = null;
+
+        await loadAdminList();
+        setStatus2("更新しました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+
+      }catch(err){
+        editErr.textContent = err?.message || String(err || "");
+        editErr.classList.add("show");
+      }
+    }
+
+    async function deleteFromEditor(){
+      try{
+        if(!editTarget) return;
+        const { lessonKey, id } = editTarget;
+        showEditModal(false);
+        editTarget = null;
+        await deleteItem(lessonKey, id);
+      }catch(_){}
+    }
+
+    // =========================
+    // ✅ 並び替え：ドラッグ&ドロップで order を再採番して保存
+    // =========================
+    function renumberOrdersAndSave(lessonKey, items){
+      const base = 1000;
+      const updates = {};
+      items.forEach((it, idx)=>{
+        const ord = (idx + 1) * base;
+        it.order = ord;
+        updates[`${PATH_LESSONS}/${lessonKey}/items/${it.id}/order`] = ord;
+      });
+      return db.ref().update(updates);
+    }
+
+    function clearDropHints(){
+      [...listEl.querySelectorAll(".card.dropHint")].forEach(el=>el.classList.remove("dropHint"));
+      [...listEl.querySelectorAll(".card.dragging")].forEach(el=>el.classList.remove("dragging"));
+    }
+
+    function getCardElFromEvent(e){
+      return e.target.closest?.(".card") || null;
+    }
+
+    // =========================
+    // Auth
+    // =========================
+    async function doAuth(){
+      try{
+        authErr.classList.remove("show");
+        authErr.textContent = "";
+
+        const email = (authEmail.value || "").trim();
+        const pass = (authPass.value || "");
+
+        if(!email) throw new Error("ID（メール）を入力してください。");
+        if(!pass) throw new Error("パスワードを入力してください。");
+
+        if(authMode === "login"){
+          await auth.signInWithEmailAndPassword(email, pass);
+        }else{
+          await auth.createUserWithEmailAndPassword(email, pass);
+        }
+        showAuthModal(false);
+      }catch(err){
+        authErr.textContent = friendlyAuthError(err);
+        authErr.classList.add("show");
+      }
+    }
+
+    // =========================
+    // Init Firebase
+    // =========================
+    async function initFirebase(){
+      try{
+        if(!window.firebase) throw new Error("Firebase SDKの読み込みに失敗しました。");
+        if(!firebase.apps || !firebase.apps.length){
+          firebase.initializeApp(firebaseConfig);
+        }
+        auth = firebase.auth();
+        db = firebase.database();
+
+        try{ await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(_){}
+
+        auth.onAuthStateChanged(async (user) => {
+          currentUser = user || null;
+          updateAuthUI();
+
+          if(!isAdminSignedIn()){
+            loadLessonItemsForViewer(currentLessonKey);
+            return;
+          }
+          loadAdminList();
+        });
+
+        currentLessonKey = loadLastLesson();
+        buildLessonUI();
+        loadLessonItemsForViewer(currentLessonKey);
+
+      }catch(err){
+        renderStageEmpty("Firebase初期化エラー");
+        placeholder.querySelector(".s").textContent = String(err?.message || err || "");
+      }
+    }
+
+    // =========================
+    // Drag & Drop handlers (upload zone)
+    // =========================
+    function preventDefaults(e){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function onDropZoneDragEnter(e){
+      preventDefaults(e);
+      if(!isAdminSignedIn()) return;
+      dropZone.classList.add("active");
+    }
+    function onDropZoneDragOver(e){
+      preventDefaults(e);
+      if(!isAdminSignedIn()) return;
+      dropZone.classList.add("active");
+      if(e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    }
+    function onDropZoneDragLeave(e){
+      preventDefaults(e);
+      dropZone.classList.remove("active");
+    }
+    function onDropZoneDrop(e){
+      preventDefaults(e);
+      dropZone.classList.remove("active");
+      if(!isAdminSignedIn()){
+        setStatus("ログインしてください。", "err");
+        return;
+      }
+      const files = e.dataTransfer?.files;
+      if(files && files.length){
+        addFilesToQueue(files);
+        try{ fFile.value = ""; }catch(_){}
+      }
+    }
+
+    // =========================
+    // Events
+    // =========================
+    btnLogin.addEventListener("click", () => { setAuthMode("login"); showAuthModal(true); });
+    btnLogout.addEventListener("click", async () => { try{ await auth.signOut(); }catch(_){ } });
+
+    tabLogin.addEventListener("click", () => setAuthMode("login"));
+    tabSignup.addEventListener("click", () => setAuthMode("signup"));
+    btnCloseAuth.addEventListener("click", () => showAuthModal(false));
+    authModal.addEventListener("click", (e)=>{ if(e.target===authModal) showAuthModal(false); });
+    btnAuthDo.addEventListener("click", doAuth);
+    authPass.addEventListener("keydown", (e)=>{ if(e.key==="Enter") doAuth(); });
+
+    lessonRow.addEventListener("click", (e)=>{
+      const b = e.target.closest(".lessonBtn");
+      if(!b) return;
+      const key = b.getAttribute("data-lesson");
+      if(!key) return;
+      setLesson(key);
+    });
+
+    stage.addEventListener("pointerdown", onPointerDown);
+    stage.addEventListener("pointermove", onPointerMove);
+    stage.addEventListener("pointerup", onPointerUp);
+    stage.addEventListener("pointercancel", onPointerCancel);
+    stage.addEventListener("contextmenu", (e)=>e.preventDefault());
+
+    fFile.addEventListener("change", ()=>{
+      if(!isAdminSignedIn()){
+        setStatus("ログインしてください。", "err");
+        return;
+      }
+      if(fFile.files && fFile.files.length){
+        addFilesToQueue(fFile.files);
+      }
+    });
+
+    btnUpload.addEventListener("click", uploadImagesBatch);
+    btnAddSpecial.addEventListener("click", addSpecialCard);
+
+    queueBody.addEventListener("click", (e)=>{
+      const btn = e.target.closest('[data-q-action="rm"]');
+      if(!btn) return;
+      const box = btn.closest("[data-q]");
+      const id = box?.getAttribute("data-q");
+      if(id) removeQueueItem(id);
+    });
+    btnClearQueue.addEventListener("click", clearQueue);
+
+    ["dragenter","dragover","dragleave","drop"].forEach(ev=>{
+      dropZone.addEventListener(ev, preventDefaults, false);
+    });
+    dropZone.addEventListener("dragenter", onDropZoneDragEnter);
+    dropZone.addEventListener("dragover", onDropZoneDragOver);
+    dropZone.addEventListener("dragleave", onDropZoneDragLeave);
+    dropZone.addEventListener("drop", onDropZoneDrop);
+
+    btnRefresh.addEventListener("click", loadAdminList);
+    listLesson.addEventListener("change", async ()=>{
+      selectedIds.clear();
+      updateSelectButtons();
+      await loadAdminList();
+    });
+
+    btnToggleSelect.addEventListener("click", ()=>{
+      selectMode = !selectMode;
+      if(!selectMode) selectedIds.clear();
+      renderAdminList(lastRendered);
+      updateSelectButtons();
+    });
+    btnClearSelect.addEventListener("click", ()=>{
+      selectedIds.clear();
+      renderAdminList(lastRendered);
+      updateSelectButtons();
+    });
+    btnCombine.addEventListener("click", createComboFromSelection);
+
+    listEl.addEventListener("click", (e)=>{
+      const lessonKey = listLesson.value;
+
+      const delBtn = e.target.closest('[data-action="del"]');
+      if(delBtn){
+        const card = delBtn.closest(".card");
+        const id = card?.getAttribute("data-id") || "";
+        if(id) deleteItem(lessonKey, id);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const card = e.target.closest(".card");
+      if(!card) return;
+      const id = card.getAttribute("data-id") || "";
+      if(!id) return;
+
+      if(selectMode){
+        if(selectedIds.has(id)) selectedIds.delete(id);
+        else selectedIds.add(id);
+        renderAdminList(lastRendered);
+        updateSelectButtons();
+        return;
+      }
+
+      openEditor(lessonKey, id);
+    });
+
+    listEl.addEventListener("dragstart", (e)=>{
+      if(selectMode) { e.preventDefault(); return; }
+      const card = getCardElFromEvent(e);
+      if(!card) return;
+      draggingId = card.getAttribute("data-id");
+      card.classList.add("dragging");
+      try{
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", draggingId || "");
+      }catch(_){}
+    });
+
+    listEl.addEventListener("dragover", (e)=>{
+      if(selectMode) return;
+      e.preventDefault();
+      const over = getCardElFromEvent(e);
+      if(!over) return;
+      const overId = over.getAttribute("data-id");
+      if(!overId || overId === draggingId) return;
+
+      clearDropHints();
+      over.classList.add("dropHint");
+      try{ e.dataTransfer.dropEffect = "move"; }catch(_){}
+    });
+
+    listEl.addEventListener("dragleave", (e)=>{
+      if(selectMode) return;
+      const over = getCardElFromEvent(e);
+      if(!over) return;
+      over.classList.remove("dropHint");
+    });
+
+    listEl.addEventListener("drop", async (e)=>{
+      if(selectMode) return;
+      e.preventDefault();
+      const over = getCardElFromEvent(e);
+      if(!over) return;
+
+      const overId = over.getAttribute("data-id");
+      const fromId = draggingId || "";
+      if(!fromId || !overId || fromId === overId) return;
+
+      const lessonKey = listLesson.value;
+
+      const arr = [...lastRendered];
+      const fromIdx = arr.findIndex(x=>x.id===fromId);
+      const toIdx = arr.findIndex(x=>x.id===overId);
+      if(fromIdx<0 || toIdx<0) return;
+
+      const [moved] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, moved);
+
+      try{
+        setStatus2("並び替え保存中...", null);
+        await renumberOrdersAndSave(lessonKey, arr);
+        lastRendered = arr;
+        renderAdminList(arr);
+        setStatus2("並び替え完了 ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+      }catch(err){
+        setStatus2(err?.message || String(err||""), "err");
+      }finally{
+        draggingId = null;
+        clearDropHints();
+      }
+    });
+
+    listEl.addEventListener("dragend", ()=>{
+      draggingId = null;
+      clearDropHints();
+    });
+
+    btnCloseEdit.addEventListener("click", ()=>{ showEditModal(false); editTarget=null; dragState=null; });
+    editModal.addEventListener("click", (e)=>{ if(e.target===editModal) { showEditModal(false); editTarget=null; dragState=null; } });
+
+    tabTalk.addEventListener("click", ()=>setEditTab("talk"));
+    tabImgText.addEventListener("click", ()=>{
+      if(editTarget?.isSpecial || editTarget?.isCombo) return;
+      setEditTab("img");
+    });
+
+    editPaper.addEventListener("input", ()=> {
+      editTalkMarkers = markersFromPaper();
+      if(editTarget?.isSpecial){
+        const raw = editTalkMarkers.trim() || "（未登録）";
+        talkNoImgText.innerHTML = toTalkHtml(raw);
+        imgNoImgText.innerHTML = toTalkHtml(raw);
+      }
+    });
+
+    btnBlueLine.addEventListener("click", ()=>{
+      editPaper.focus();
+      const r = getSelectionRangeInPaper();
+      if(!r || r.collapsed) return;
+
+      const shouldRemove = selectionIntersectsClass(r, "blueu");
+      let changed = false;
+
+      if(shouldRemove) changed = unwrapClassInRange(r, "blueu");
+      else changed = wrapRangeWithClass(r, "blueu");
+
+      if(changed){
+        editTalkMarkers = markersFromPaper();
+        if(editTarget?.isSpecial){
+          const raw = editTalkMarkers.trim() || "（未登録）";
+          talkNoImgText.innerHTML = toTalkHtml(raw);
+          imgNoImgText.innerHTML = toTalkHtml(raw);
+        }
+      }
+    });
+
+    btnGreenLine.addEventListener("click", ()=>{
+      editPaper.focus();
+      const r = getSelectionRangeInPaper();
+      if(!r || r.collapsed) return;
+
+      const shouldRemove = selectionIntersectsClass(r, "greenu");
+      let changed = false;
+
+      if(shouldRemove) changed = unwrapClassInRange(r, "greenu");
+      else changed = wrapRangeWithClass(r, "greenu");
+
+      if(changed){
+        editTalkMarkers = markersFromPaper();
+        if(editTarget?.isSpecial){
+          const raw = editTalkMarkers.trim() || "（未登録）";
+          talkNoImgText.innerHTML = toTalkHtml(raw);
+          imgNoImgText.innerHTML = toTalkHtml(raw);
+        }
+      }
+    });
+
+    btnBlackLine.addEventListener("click", ()=>{
+      editPaper.focus();
+      const r = getSelectionRangeInPaper();
+      if(!r || r.collapsed) return;
+
+      const shouldRemove = selectionIntersectsClass(r, "blacku");
+      let changed = false;
+
+      if(shouldRemove) changed = unwrapClassInRange(r, "blacku");
+      else changed = wrapRangeWithClass(r, "blacku");
+
+      if(changed){
+        editTalkMarkers = markersFromPaper();
+        if(editTarget?.isSpecial){
+          const raw = editTalkMarkers.trim() || "（未登録）";
+          talkNoImgText.innerHTML = toTalkHtml(raw);
+          imgNoImgText.innerHTML = toTalkHtml(raw);
+        }
+      }
+    });
+
+    btnEditSave.addEventListener("click", saveEditedAll);
+    btnEditDelete.addEventListener("click", deleteFromEditor);
+
+    btnAddText.addEventListener("click", addTextOverlay);
+    btnDelText.addEventListener("click", deleteSelectedOverlay);
+
+    ovFont.addEventListener("input", ()=>{
+      ovFontVal.textContent = String(ovFont.value);
+      applySelectedStyle({ font: Number(ovFont.value) });
+    });
+    ovColor.addEventListener("input", ()=>{
+      applySelectedStyle({ color: String(ovColor.value || "#ffffff") });
+    });
+    ovBold.addEventListener("click", ()=>{
+      const o = getSelectedOverlay();
+      if(!o) return;
+      applySelectedStyle({ bold: !o.bold });
+    });
+    ovShadow.addEventListener("click", ()=>{
+      const o = getSelectedOverlay();
+      if(!o) return;
+      applySelectedStyle({ shadow: !(o.shadow !== false) });
+    });
+
+    alignBtns.forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const a = btn.getAttribute("data-align") || "left";
+        applySelectedStyle({ align: a });
+      });
+    });
+
+    editOverlayLayer.addEventListener("input", (e)=>{
+      const ovEl = e.target.closest?.(".editOv");
+      if(!ovEl) return;
+      const id = ovEl.getAttribute("data-ov");
+      if(!id) return;
+      updateOverlayTextFromDom(id);
+      renderTalkTabPreview();
+    });
+
+    imgCanvas.addEventListener("pointerdown", onCanvasPointerDown);
+    imgCanvas.addEventListener("pointermove", onCanvasPointerMove);
+    imgCanvas.addEventListener("pointerup", onCanvasPointerUp);
+    imgCanvas.addEventListener("pointercancel", onCanvasPointerUp);
+    imgCanvas.addEventListener("contextmenu", (e)=>e.preventDefault());
+
+    bindModalHoldToImageOnly(talkCanvas, "talkCanvas");
+    bindModalHoldToImageOnly(imgCanvas, "imgCanvas");
+
+    window.addEventListener("load", initFirebase);
+
+    /*
+      ✅ Realtime Database ルール例（課別）
+      {
+        "rules": {
+          "lessons": {
+            "$lesson": {
+              "items": {
+                ".read": true,
+                "$id": {
+                  ".write": "auth != null && auth.token.firebase.sign_in_provider == 'password' && ( (!data.exists() && newData.child('createdBy').val() === auth.uid) || (data.exists() && data.child('createdBy').val() === auth.uid) )"
+                }
+              }
+            }
+          }
+        }
+      }
+    */
+  </script>
+</body>
+</html>
