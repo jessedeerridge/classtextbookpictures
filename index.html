@@ -1220,16 +1220,28 @@
     <div class="admin" id="admin">
       <section class="panel">
         <div class="panelHead">
-          <div class="panelTitle">管理画面：画像登録 / スペシャルカード登録（課別）</div>
+          <div class="panelTitle">登録先（共通）</div>
+        </div>
+        <div class="panelBody" style="grid-template-columns: 1fr 1fr; align-items:end;">
+          <div class="field">
+            <div class="label">登録するクラス（Ⅰ〜Ⅳ）</div>
+            <select class="input" id="adminGroup"></select>
+          </div>
+          <div class="field">
+            <div class="label">登録する課（L）</div>
+            <select class="input" id="adminLesson"></select>
+            <div class="hint">この選択が、下の「画像カード登録」「スペシャルカード登録」「登録画像一覧」のすべてに共通で使われます。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <div class="panelTitle">画像カード登録</div>
           <div class="status" id="status"></div>
         </div>
 
         <div class="panelBody">
-          <div class="field">
-            <div class="label">課（保存先）</div>
-            <select class="input" id="adminLesson"></select>
-            <div class="hint">ここで選んだ課に「画像カード」または「スペシャルカード」が保存されます。</div>
-          </div>
 
           <div class="field">
             <div class="label">画像カード：会話文（長押し表示）</div>
@@ -1260,13 +1272,7 @@
           <div class="panelTitle">スペシャルカード（画像なし・常時会話表示）</div>
           <div class="status" id="statusSp"></div>
         </div>
-        <div class="panelBody" style="grid-template-columns: 1.1fr 1.9fr auto; align-items:end;">
-          <div class="field">
-            <div class="label">課（保存先）</div>
-            <select class="input" id="spLesson"></select>
-            <div class="hint">この課にスペシャルカードとして保存します。</div>
-          </div>
-
+        <div class="panelBody" style="grid-template-columns: 1fr auto; align-items:end;">
           <div class="field">
             <div class="label">会話文（常時表示 / 改行OK）</div>
             <textarea class="input" id="spTalk" placeholder="例：\n今日はスペシャル練習！\n1) 〜\n2) 〜"></textarea>
@@ -1289,24 +1295,23 @@
 
       <section class="panel">
         <div class="panelHead">
-          <div class="panelTitle">登録一覧（課別）</div>
+          <div class="panelTitle">登録画像一覧（選択中のL）</div>
           <div class="headRight">
             <button class="btn small" id="btnToggleSelect">連結モード</button>
             <button class="btn small primary" id="btnCombine" disabled>選択を連結して保存</button>
             <button class="btn small" id="btnClearSelect" disabled>選択解除</button>
+            <button class="btn" id="btnRefresh">更新</button>
             <div class="status" id="status2"></div>
           </div>
         </div>
-        <div class="panelBody" style="grid-template-columns:1fr auto; align-items:center;">
+        <div class="panelBody" style="grid-template-columns:1fr; align-items:center;">
           <div class="field">
-            <div class="label">表示する課</div>
-            <select class="input" id="listLesson"></select>
             <div class="hint">
+              ✅ 一番上で選んだクラス・課の登録画像を表示します。<br>
               ✅ ドラッグ＆ドロップでカード順を入れ替えできます。<br>
               ✅ 連結モードで複数選択 → 連結カード（横並び）として1枚保存。
             </div>
           </div>
-          <button class="btn" id="btnRefresh">更新</button>
         </div>
       </section>
 
@@ -1566,7 +1571,7 @@
     const statusEl = $("#status");
     const status2El = $("#status2");
     const adminLesson = $("#adminLesson");
-    const listLesson = $("#listLesson");
+    const adminGroup = $("#adminGroup");
     const btnRefresh = $("#btnRefresh");
     const fTalkQuick = $("#fTalkQuick");
     const fFile = $("#fFile");
@@ -1574,7 +1579,6 @@
 
     // ✅ special add
     const statusSpEl = $("#statusSp");
-    const spLesson = $("#spLesson");
     const spTalk = $("#spTalk");
     const btnAddSpecial = $("#btnAddSpecial");
 
@@ -1894,17 +1898,36 @@
     }
 
     function buildLessonUI(){
-      const opts = LESSONS.map(l => `<option value="${escapeHtml(l.key)}">${escapeHtml(l.label)}</option>`).join("");
-      adminLesson.innerHTML = opts;
-      listLesson.innerHTML = opts;
-      spLesson.innerHTML = opts;
+      adminGroup.innerHTML = LESSON_GROUPS.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.label)}</option>`).join("");
 
       renderLessonBar();
 
       const firstLesson = LESSONS[0]?.key || "k1";
-      adminLesson.value = currentLessonKey || firstLesson;
-      listLesson.value = currentLessonKey || firstLesson;
-      spLesson.value = currentLessonKey || firstLesson;
+      const firstGroupKey = LESSON_GROUPS[0]?.key || "";
+      const initialGroupKey = getGroupByLesson(currentLessonKey)?.key || currentGroupKey || firstGroupKey;
+      syncAdminLessonOptions(initialGroupKey, currentLessonKey || firstLesson);
+    }
+
+    function syncAdminLessonOptions(groupKey, preferredLessonKey){
+      const fallbackGroup = LESSON_GROUPS[0] || null;
+      const group = getGroupByKey(groupKey) || fallbackGroup;
+      if(!group){
+        adminLesson.innerHTML = "";
+        return;
+      }
+
+      adminGroup.value = group.key;
+
+      const keys = group.lessonKeys || [];
+      const options = keys.map(key => {
+        const lesson = LESSONS.find(x => x.key === key);
+        if(!lesson) return "";
+        return `<option value="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</option>`;
+      }).join("");
+      adminLesson.innerHTML = options;
+
+      const canKeep = !!preferredLessonKey && keys.includes(preferredLessonKey);
+      adminLesson.value = canKeep ? preferredLessonKey : (keys[0] || "");
     }
 
     function setLesson(key, silent, preferredGroupKey){
@@ -2780,7 +2803,7 @@
     async function loadAdminList(){
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
-        const lessonKey = listLesson.value;
+        const lessonKey = adminLesson.value;
 
         setStatus2("読み込み中...", null);
 
@@ -3017,7 +3040,7 @@
         if(okCount > 0){
           setStatus(`アップロード完了 ✅（成功 ${okCount}件）`, "ok");
           setTimeout(()=>setStatus("", null), 900);
-          if(listLesson.value === lessonKey) loadAdminList();
+          if(adminLesson.value === lessonKey) loadAdminList();
         }else{
           throw new Error("すべて失敗しました（サイズ/DBルール/ネットワークを確認）。");
         }
@@ -3035,7 +3058,7 @@
         if(!db) throw new Error("Firebaseが初期化できていません。");
         if(!isAdminSignedIn()) throw new Error("ログインしてください。");
 
-        const lessonKey = spLesson.value;
+        const lessonKey = adminLesson.value;
         const talk = (spTalk.value || "").trim();
 
         if(!talk){
@@ -3063,7 +3086,7 @@
         setStatusSp("追加しました ✅", "ok");
         setTimeout(()=>setStatusSp("", null), 900);
 
-        if(listLesson.value === lessonKey) loadAdminList();
+        if(adminLesson.value === lessonKey) loadAdminList();
 
       }catch(err){
         setStatusSp(err?.message || String(err || ""), "err");
@@ -3099,7 +3122,7 @@
         if(!db) throw new Error("Firebaseが初期化できていません。");
         if(!isAdminSignedIn()) throw new Error("ログインしてください。");
 
-        const lessonKey = listLesson.value;
+        const lessonKey = adminLesson.value;
         const ids = [...selectedIds];
         if(ids.length < 2) throw new Error("2枚以上選択してください。");
 
@@ -3928,7 +3951,13 @@
     dropZone.addEventListener("drop", onDropZoneDrop);
 
     btnRefresh.addEventListener("click", loadAdminList);
-    listLesson.addEventListener("change", async ()=>{
+    adminGroup.addEventListener("change", async ()=>{
+      syncAdminLessonOptions(adminGroup.value, adminLesson.value);
+      selectedIds.clear();
+      updateSelectButtons();
+      await loadAdminList();
+    });
+    adminLesson.addEventListener("change", async ()=>{
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
@@ -3948,7 +3977,7 @@
     btnCombine.addEventListener("click", createComboFromSelection);
 
     listEl.addEventListener("click", (e)=>{
-      const lessonKey = listLesson.value;
+      const lessonKey = adminLesson.value;
 
       const delBtn = e.target.closest('[data-action="del"]');
       if(delBtn){
@@ -4018,7 +4047,7 @@
       const fromId = draggingId || "";
       if(!fromId || !overId || fromId === overId) return;
 
-      const lessonKey = listLesson.value;
+      const lessonKey = adminLesson.value;
 
       const arr = [...lastRendered];
       const fromIdx = arr.findIndex(x=>x.id===fromId);
