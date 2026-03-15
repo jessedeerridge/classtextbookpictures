@@ -2398,6 +2398,7 @@
             currentIndex = lessonItems.findIndex(x => x.id === nextItem.id);
             renderViewerOverlays(nextItem);
             updateFirstLine(nextItem);
+            renderStageIndexBar();
           }
         }
       } finally {
