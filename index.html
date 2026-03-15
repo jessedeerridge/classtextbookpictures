@@ -1864,13 +1864,18 @@
     }
 
     function renderLessonBar(){
-      const canShowLessons = !!currentGroupKey;
+      const selectedGroup = getGroupByKey(currentGroupKey);
+      if(!selectedGroup){
+        lessonRow.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${buildGroupButtons()}</div>`;
+        return;
+      }
+
       lessonRow.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${buildGroupButtons()}</div>
-        ${canShowLessons ? `
-          <div style="width:100%;height:0"></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">${buildLessonButtonsForGroup(currentGroupKey)}<button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button></div>
-        ` : ""}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="lessonBtn active" aria-label="選択中のグループ">${escapeHtml(selectedGroup.label)}</button>
+          ${buildLessonButtonsForGroup(currentGroupKey)}
+          <button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button>
+        </div>
       `;
     }
 
