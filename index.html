@@ -1226,9 +1226,11 @@
 
         <div class="panelBody">
           <div class="field">
-            <div class="label">課（保存先）</div>
+            <div class="label">範囲（Ⅰ〜Ⅳ）</div>
+            <select class="input" id="adminGroup"></select>
+            <div class="label" style="margin-top:8px">課（保存先）</div>
             <select class="input" id="adminLesson"></select>
-            <div class="hint">ここで選んだ課に「画像カード」または「スペシャルカード」が保存されます。</div>
+            <div class="hint">先にⅠ〜Ⅳを選ぶと、対応するLだけが表示されます。選んだ課に「画像カード」または「スペシャルカード」が保存されます。</div>
           </div>
 
           <div class="field">
@@ -1566,6 +1568,7 @@
     const statusEl = $("#status");
     const status2El = $("#status2");
     const adminLesson = $("#adminLesson");
+    const adminGroup = $("#adminGroup");
     const listLesson = $("#listLesson");
     const btnRefresh = $("#btnRefresh");
     const fTalkQuick = $("#fTalkQuick");
@@ -1895,16 +1898,40 @@
 
     function buildLessonUI(){
       const opts = LESSONS.map(l => `<option value="${escapeHtml(l.key)}">${escapeHtml(l.label)}</option>`).join("");
-      adminLesson.innerHTML = opts;
+      adminGroup.innerHTML = LESSON_GROUPS.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.label)}</option>`).join("");
       listLesson.innerHTML = opts;
       spLesson.innerHTML = opts;
 
       renderLessonBar();
 
       const firstLesson = LESSONS[0]?.key || "k1";
-      adminLesson.value = currentLessonKey || firstLesson;
+      const firstGroupKey = LESSON_GROUPS[0]?.key || "";
+      const initialGroupKey = getGroupByLesson(currentLessonKey)?.key || currentGroupKey || firstGroupKey;
+      syncAdminLessonOptions(initialGroupKey, currentLessonKey || firstLesson);
       listLesson.value = currentLessonKey || firstLesson;
       spLesson.value = currentLessonKey || firstLesson;
+    }
+
+    function syncAdminLessonOptions(groupKey, preferredLessonKey){
+      const fallbackGroup = LESSON_GROUPS[0] || null;
+      const group = getGroupByKey(groupKey) || fallbackGroup;
+      if(!group){
+        adminLesson.innerHTML = "";
+        return;
+      }
+
+      adminGroup.value = group.key;
+
+      const keys = group.lessonKeys || [];
+      const options = keys.map(key => {
+        const lesson = LESSONS.find(x => x.key === key);
+        if(!lesson) return "";
+        return `<option value="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</option>`;
+      }).join("");
+      adminLesson.innerHTML = options;
+
+      const canKeep = !!preferredLessonKey && keys.includes(preferredLessonKey);
+      adminLesson.value = canKeep ? preferredLessonKey : (keys[0] || "");
     }
 
     function setLesson(key, silent, preferredGroupKey){
@@ -3932,6 +3959,9 @@
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
+    });
+    adminGroup.addEventListener("change", ()=>{
+      syncAdminLessonOptions(adminGroup.value, adminLesson.value);
     });
 
     btnToggleSelect.addEventListener("click", ()=>{
