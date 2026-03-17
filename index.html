@@ -1502,8 +1502,15 @@
         <div class="modalErr" id="editErr"></div>
 
         <div class="rowActions">
+          <button class="btn" id="btnEditMove">移動</button>
           <button class="btn" id="btnEditDelete">削除</button>
           <button class="btn primary" id="btnEditSave">保存</button>
+        </div>
+        <div class="rowActions hidden" id="movePanel" style="justify-content:flex-start;flex-wrap:wrap;margin-top:8px;gap:8px">
+          <select class="input" id="moveGroup" style="width:auto;min-width:100px"></select>
+          <select class="input" id="moveLesson" style="width:auto;min-width:110px"></select>
+          <button class="btn primary" id="btnMoveConfirm">このクラス/課へ移動</button>
+          <button class="btn ghost" id="btnMoveCancel">キャンセル</button>
         </div>
       </div>
     </div>
@@ -1624,6 +1631,12 @@
     const editErr = $("#editErr");
     const btnEditSave = $("#btnEditSave");
     const btnEditDelete = $("#btnEditDelete");
+    const btnEditMove = $("#btnEditMove");
+    const movePanel = $("#movePanel");
+    const moveGroup = $("#moveGroup");
+    const moveLesson = $("#moveLesson");
+    const btnMoveConfirm = $("#btnMoveConfirm");
+    const btnMoveCancel = $("#btnMoveCancel");
 
     // tabs in edit modal
     const tabTalk = $("#tabTalk");
@@ -1859,6 +1872,19 @@
     function getGroupByLesson(lessonKey){
       if(!lessonKey) return null;
       return LESSON_GROUPS.find(g => (g.lessonKeys || []).includes(lessonKey)) || null;
+    }
+
+    function buildScopedLessonKey(groupKey, lessonKey){
+      const g = String(groupKey || "").trim();
+      const l = String(lessonKey || "").trim();
+      if(!g || !l) return "";
+      return `${g}_${l}`;
+    }
+
+    function lessonItemsPath(groupKey, lessonKey){
+      const scoped = buildScopedLessonKey(groupKey, lessonKey);
+      if(!scoped) throw new Error("クラスと課を選択してください。");
+      return `${PATH_LESSONS}/${scoped}/items`;
     }
 
     function buildGroupButtons(){
@@ -2674,7 +2700,7 @@
       try{
         if(!db) return;
 
-        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`);
+        const ref = db.ref(lessonItemsPath(currentGroupKey, lessonKey));
         const snap = await ref.get();
         const arr = [];
         snap.forEach(child=>{
@@ -2830,10 +2856,11 @@
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
         const lessonKey = adminLesson.value;
+        const groupKey = adminGroup.value;
 
         setStatus2("読み込み中...", null);
 
-        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`);
+        const ref = db.ref(lessonItemsPath(groupKey, lessonKey));
         const snap = await ref.get();
         const arr = [];
         snap.forEach(child=>{
@@ -3040,7 +3067,7 @@
               createdByEmail: currentUser.email || ""
             };
 
-            const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`).push();
+            const ref = db.ref(lessonItemsPath(adminGroup.value, lessonKey)).push();
             await ref.set(payload);
 
             setQueueProgress(it.id, 100);
@@ -3105,7 +3132,7 @@
           createdByEmail: currentUser.email || ""
         };
 
-        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`).push();
+        const ref = db.ref(lessonItemsPath(adminGroup.value, lessonKey)).push();
         await ref.set(payload);
 
         spTalk.value = "";
@@ -3119,7 +3146,7 @@
       }
     }
 
-    async function deleteItem(lessonKey, id){
+    async function deleteItem(groupKey, lessonKey, id){
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
         if(!isAdminSignedIn()) throw new Error("ログインしてください。");
@@ -3131,7 +3158,7 @@
         const ok = confirm("削除しますか？");
         if(!ok) return;
 
-        await db.ref(`${PATH_LESSONS}/${lessonKey}/items/${id}`).remove();
+        await db.ref(`${lessonItemsPath(groupKey, lessonKey)}/${id}`).remove();
         setStatus2("削除しました ✅", "ok");
         setTimeout(()=>setStatus2("", null), 900);
         loadAdminList();
@@ -3191,7 +3218,7 @@
         };
 
         setStatus2("連結カードを保存中...", null);
-        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/items`).push();
+        const ref = db.ref(lessonItemsPath(adminGroup.value, lessonKey)).push();
         await ref.set(payload);
 
         selectedIds.clear();
@@ -3652,7 +3679,7 @@
       }
     }
 
-    function openEditor(lessonKey, id){
+    function openEditor(groupKey, lessonKey, id){
       const hit = lastRendered.find(x => x.id === id);
       if(!hit) return;
 
@@ -3671,6 +3698,7 @@
       const isCombo = (hit.type === "combo");
 
       editTarget = {
+        groupKey,
         lessonKey,
         id,
         isSpecial: isSp,
@@ -3695,8 +3723,10 @@
         syncControlsFromSelected();
       }
 
-      editItemInfo.textContent = `${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
-      talkItemInfo.textContent = `${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
+      editItemInfo.textContent = `${groupKey}-${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
+      talkItemInfo.textContent = `${groupKey}-${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
+
+      movePanel.classList.add("hidden");
 
       renderTalkTabPreview();
 
@@ -3723,7 +3753,7 @@
 
         const overlaysToSave = (editTarget.isSpecial || editTarget.isCombo) ? [] : sanitizeOverlays(editOverlays);
 
-        const { lessonKey, id } = editTarget;
+        const { groupKey, lessonKey, id } = editTarget;
         const hit = lastRendered.find(x => x.id === id);
         if(!hit) throw new Error("対象が見つかりません。");
         if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ編集できます。");
@@ -3733,7 +3763,7 @@
           overlays: overlaysToSave
         };
 
-        await db.ref(`${PATH_LESSONS}/${lessonKey}/items/${id}`).update(updates);
+        await db.ref(`${lessonItemsPath(groupKey, lessonKey)}/${id}`).update(updates);
 
         showEditModal(false);
         editTarget = null;
@@ -3751,23 +3781,95 @@
     async function deleteFromEditor(){
       try{
         if(!editTarget) return;
-        const { lessonKey, id } = editTarget;
+        const { groupKey, lessonKey, id } = editTarget;
         showEditModal(false);
         editTarget = null;
-        await deleteItem(lessonKey, id);
+        movePanel.classList.add("hidden");
+        await deleteItem(groupKey, lessonKey, id);
       }catch(_){}
+    }
+
+    function syncMoveLessonOptions(groupKey, preferredLessonKey){
+      const group = getGroupByKey(groupKey);
+      if(!group){
+        moveLesson.innerHTML = "";
+        return;
+      }
+
+      const options = (group.lessonKeys || []).map(key => {
+        const lesson = LESSONS.find(x => x.key === key);
+        if(!lesson) return "";
+        return `<option value="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</option>`;
+      }).join("");
+      moveLesson.innerHTML = options;
+
+      const canKeep = !!preferredLessonKey && (group.lessonKeys || []).includes(preferredLessonKey);
+      moveLesson.value = canKeep ? preferredLessonKey : ((group.lessonKeys || [])[0] || "");
+    }
+
+    async function moveFromEditor(){
+      try{
+        if(!editTarget) return;
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const { groupKey: fromGroupKey, lessonKey: fromLessonKey, id } = editTarget;
+        const toGroupKey = moveGroup.value;
+        const toLessonKey = moveLesson.value;
+
+        if(!toGroupKey || !toLessonKey){
+          throw new Error("移動先のクラス/課を選択してください。");
+        }
+        if(fromGroupKey === toGroupKey && fromLessonKey === toLessonKey){
+          throw new Error("同じクラス/課です。移動先を変更してください。");
+        }
+
+        const hit = lastRendered.find(x => x.id === id);
+        if(!hit) throw new Error("対象が見つかりません。");
+        if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ移動できます。");
+
+        const ok = confirm(`「${fromGroupKey}-${fromLessonKey}」から「${toGroupKey}-${toLessonKey}」へ移動しますか？`);
+        if(!ok) return;
+
+        const payload = {
+          ...hit,
+          movedAt: firebase.database.ServerValue.TIMESTAMP,
+          movedFrom: `${fromGroupKey}_${fromLessonKey}`,
+          movedFromId: id,
+          order: firebase.database.ServerValue.TIMESTAMP
+        };
+        delete payload.id;
+
+        const toRef = db.ref(lessonItemsPath(toGroupKey, toLessonKey)).push();
+        await toRef.set(payload);
+        await db.ref(`${lessonItemsPath(fromGroupKey, fromLessonKey)}/${id}`).remove();
+
+        showEditModal(false);
+        editTarget = null;
+        movePanel.classList.add("hidden");
+
+        adminGroup.value = toGroupKey;
+        syncAdminLessonOptions(toGroupKey, toLessonKey);
+        await loadAdminList();
+
+        setStatus2("移動しました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+      }catch(err){
+        editErr.textContent = err?.message || String(err || "");
+        editErr.classList.add("show");
+      }
     }
 
     // =========================
     // ✅ 並び替え：ドラッグ&ドロップで order を再採番して保存
     // =========================
-    function renumberOrdersAndSave(lessonKey, items){
+    function renumberOrdersAndSave(groupKey, lessonKey, items){
       const base = 1000;
       const updates = {};
       items.forEach((it, idx)=>{
         const ord = (idx + 1) * base;
         it.order = ord;
-        updates[`${PATH_LESSONS}/${lessonKey}/items/${it.id}/order`] = ord;
+        updates[`${lessonItemsPath(groupKey, lessonKey)}/${it.id}/order`] = ord;
       });
       return db.ref().update(updates);
     }
@@ -4013,12 +4115,13 @@
       }
 
       const lessonKey = adminLesson.value;
+      const groupKey = adminGroup.value;
 
       const delBtn = e.target.closest('[data-action="del"]');
       if(delBtn){
         const card = delBtn.closest(".card");
         const id = card?.getAttribute("data-id") || "";
-        if(id) deleteItem(lessonKey, id);
+        if(id) deleteItem(groupKey, lessonKey, id);
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -4037,7 +4140,7 @@
         return;
       }
 
-      openEditor(lessonKey, id);
+      openEditor(groupKey, lessonKey, id);
     });
 
     listEl.addEventListener("dragstart", (e)=>{
@@ -4091,6 +4194,7 @@
       if(!fromId || !overId || fromId === overId) return;
 
       const lessonKey = adminLesson.value;
+      const groupKey = adminGroup.value;
 
       const arr = [...lastRendered];
       const fromIdx = arr.findIndex(x=>x.id===fromId);
@@ -4104,7 +4208,7 @@
 
       try{
         setStatus2("並び替え保存中...", null);
-        await renumberOrdersAndSave(lessonKey, arr);
+        await renumberOrdersAndSave(groupKey, lessonKey, arr);
         lastRendered = arr;
         renderAdminList(arr);
         suppressNextCardClick = true;
@@ -4127,8 +4231,8 @@
       clearDropHints();
     });
 
-    btnCloseEdit.addEventListener("click", ()=>{ showEditModal(false); editTarget=null; dragState=null; });
-    editModal.addEventListener("click", (e)=>{ if(e.target===editModal) { showEditModal(false); editTarget=null; dragState=null; } });
+    btnCloseEdit.addEventListener("click", ()=>{ showEditModal(false); editTarget=null; dragState=null; movePanel.classList.add("hidden"); });
+    editModal.addEventListener("click", (e)=>{ if(e.target===editModal) { showEditModal(false); editTarget=null; dragState=null; movePanel.classList.add("hidden"); } });
 
     tabTalk.addEventListener("click", ()=>setEditTab("talk"));
     tabImgText.addEventListener("click", ()=>{
@@ -4210,6 +4314,21 @@
 
     btnEditSave.addEventListener("click", saveEditedAll);
     btnEditDelete.addEventListener("click", deleteFromEditor);
+    btnEditMove.addEventListener("click", ()=>{
+      if(!editTarget) return;
+      const willShow = movePanel.classList.contains("hidden");
+      if(!willShow){
+        movePanel.classList.add("hidden");
+        return;
+      }
+      moveGroup.innerHTML = LESSON_GROUPS.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.label)}</option>`).join("");
+      moveGroup.value = editTarget.groupKey;
+      syncMoveLessonOptions(editTarget.groupKey, editTarget.lessonKey);
+      movePanel.classList.remove("hidden");
+    });
+    moveGroup.addEventListener("change", ()=>syncMoveLessonOptions(moveGroup.value, moveLesson.value));
+    btnMoveCancel.addEventListener("click", ()=>movePanel.classList.add("hidden"));
+    btnMoveConfirm.addEventListener("click", moveFromEditor);
 
     btnAddText.addEventListener("click", addTextOverlay);
     btnDelText.addEventListener("click", deleteSelectedOverlay);
