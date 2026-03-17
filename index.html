@@ -1502,6 +1502,9 @@
         <div class="modalErr" id="editErr"></div>
 
         <div class="rowActions">
+          <select class="input" id="moveGroup" style="max-width:92px"></select>
+          <select class="input" id="moveLesson" style="max-width:110px"></select>
+          <button class="btn" id="btnEditMove">移動</button>
           <button class="btn" id="btnEditDelete">削除</button>
           <button class="btn primary" id="btnEditSave">保存</button>
         </div>
@@ -1624,6 +1627,9 @@
     const editErr = $("#editErr");
     const btnEditSave = $("#btnEditSave");
     const btnEditDelete = $("#btnEditDelete");
+    const btnEditMove = $("#btnEditMove");
+    const moveGroup = $("#moveGroup");
+    const moveLesson = $("#moveLesson");
 
     // tabs in edit modal
     const tabTalk = $("#tabTalk");
@@ -1911,6 +1917,7 @@
 
     function buildLessonUI(){
       adminGroup.innerHTML = LESSON_GROUPS.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.label)}</option>`).join("");
+      moveGroup.innerHTML = LESSON_GROUPS.map(g => `<option value="${escapeHtml(g.key)}">${escapeHtml(g.label)}</option>`).join("");
 
       renderLessonBar();
 
@@ -1918,6 +1925,7 @@
       const firstGroupKey = LESSON_GROUPS[0]?.key || "";
       const initialGroupKey = getGroupByLesson(currentLessonKey)?.key || currentGroupKey || firstGroupKey;
       syncAdminLessonOptions(initialGroupKey, currentLessonKey || firstLesson);
+      syncMoveLessonOptions(initialGroupKey, currentLessonKey || firstLesson);
     }
 
     function syncAdminLessonOptions(groupKey, preferredLessonKey){
@@ -1940,6 +1948,26 @@
 
       const canKeep = !!preferredLessonKey && keys.includes(preferredLessonKey);
       adminLesson.value = canKeep ? preferredLessonKey : (keys[0] || "");
+    }
+
+    function syncMoveLessonOptions(groupKey, preferredLessonKey){
+      const fallbackGroup = LESSON_GROUPS[0] || null;
+      const group = getGroupByKey(groupKey) || fallbackGroup;
+      if(!group){
+        moveLesson.innerHTML = "";
+        return;
+      }
+
+      moveGroup.value = group.key;
+      const keys = group.lessonKeys || [];
+      moveLesson.innerHTML = keys.map(key => {
+        const lesson = LESSONS.find(x => x.key === key);
+        if(!lesson) return "";
+        return `<option value="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</option>`;
+      }).join("");
+
+      const canKeep = !!preferredLessonKey && keys.includes(preferredLessonKey);
+      moveLesson.value = canKeep ? preferredLessonKey : (keys[0] || "");
     }
 
     function setLesson(key, silent, preferredGroupKey){
@@ -3698,6 +3726,10 @@
       editItemInfo.textContent = `${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
       talkItemInfo.textContent = `${lessonKey} / ${fmtTime(hit.createdAt)} / ${id.slice(0,6)}…`;
 
+      const currentGroup = getGroupByLesson(lessonKey)?.key || LESSON_GROUPS[0]?.key || "";
+      syncMoveLessonOptions(currentGroup, lessonKey);
+      btnEditMove.disabled = false;
+
       renderTalkTabPreview();
 
       setEditTab("talk");
@@ -3756,6 +3788,68 @@
         editTarget = null;
         await deleteItem(lessonKey, id);
       }catch(_){}
+    }
+
+    async function moveFromEditor(){
+      try{
+        if(!editTarget) return;
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const srcLessonKey = editTarget.lessonKey;
+        const dstLessonKey = moveLesson.value;
+        if(!dstLessonKey) throw new Error("移動先の課を選択してください。");
+        if(srcLessonKey === dstLessonKey) throw new Error("同じ課は移動先にできません。");
+
+        const hit = lastRendered.find(x => x.id === editTarget.id);
+        if(!hit) throw new Error("対象が見つかりません。");
+        if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ移動できます。");
+
+        const ok = confirm(`このカードを ${dstLessonKey.toUpperCase()} に移動しますか？`);
+        if(!ok) return;
+
+        btnEditMove.disabled = true;
+
+        const dstSnap = await db.ref(`${PATH_LESSONS}/${dstLessonKey}/items`).get();
+        let maxOrder = 0;
+        dstSnap.forEach(child=>{
+          const v = child.val() || {};
+          const o = Number(v.order || 0) || 0;
+          if(o > maxOrder) maxOrder = o;
+        });
+
+        const now = Date.now();
+        const payload = {
+          type: hit.type || "image",
+          dataUrl: hit.type === "image" ? (hit.dataUrl || "") : "",
+          images: hit.type === "combo" ? (Array.isArray(hit.images) ? hit.images : []) : [],
+          talk: String(hit.talk || ""),
+          overlays: hit.type === "image" ? sanitizeOverlays(hit.overlays || []) : [],
+          createdAt: Number(hit.createdAt || now) || now,
+          order: maxOrder + 1000,
+          createdBy: hit.createdBy || currentUser.uid,
+          createdByEmail: hit.createdByEmail || currentUser.email || "",
+          movedAt: now,
+          movedFromLesson: srcLessonKey
+        };
+
+        const dstRef = db.ref(`${PATH_LESSONS}/${dstLessonKey}/items`).push();
+        const updates = {};
+        updates[`${PATH_LESSONS}/${dstLessonKey}/items/${dstRef.key}`] = payload;
+        updates[`${PATH_LESSONS}/${srcLessonKey}/items/${editTarget.id}`] = null;
+        await db.ref().update(updates);
+
+        showEditModal(false);
+        editTarget = null;
+        await loadAdminList();
+        setStatus2(`${dstLessonKey.toUpperCase()} へ移動しました ✅`, "ok");
+        setTimeout(()=>setStatus2("", null), 1200);
+      }catch(err){
+        editErr.textContent = err?.message || String(err || "");
+        editErr.classList.add("show");
+      }finally{
+        btnEditMove.disabled = false;
+      }
     }
 
     // =========================
@@ -4210,6 +4304,10 @@
 
     btnEditSave.addEventListener("click", saveEditedAll);
     btnEditDelete.addEventListener("click", deleteFromEditor);
+    btnEditMove.addEventListener("click", moveFromEditor);
+    moveGroup.addEventListener("change", ()=>{
+      syncMoveLessonOptions(moveGroup.value, moveLesson.value);
+    });
 
     btnAddText.addEventListener("click", addTextOverlay);
     btnDelText.addEventListener("click", deleteSelectedOverlay);
