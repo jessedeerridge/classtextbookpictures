@@ -2011,17 +2011,15 @@
     }
 
     function renderLessonBar(){
-      const selectedGroup = getGroupByKey(currentGroupKey);
-      if(!selectedGroup){
-        lessonRow.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${buildGroupButtons()}</div>`;
-        return;
-      }
+      const hasGroup = !!getGroupByKey(currentGroupKey);
+      const lessonButtons = hasGroup ? buildLessonButtonsForGroup(currentGroupKey) : "";
 
       lessonRow.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="lessonBtn active" aria-label="選択中のグループ">${escapeHtml(selectedGroup.label)}</button>
-          ${buildLessonButtonsForGroup(currentGroupKey)}
-          <button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;">
+          ${buildGroupButtons()}
+          ${hasGroup ? `<span style="width:1px;height:24px;background:rgba(111,71,43,.18);"></span>` : ""}
+          ${lessonButtons}
+          ${hasGroup ? `<button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button>` : ""}
         </div>
       `;
     }
@@ -4215,11 +4213,11 @@
       jumpToItemByIndex(idx);
     });
 
-    lessonRow.addEventListener("click", (e)=>{
+    lessonRow.addEventListener("click", async (e)=>{
       const g = e.target.closest("[data-group]");
       if(g){
         const groupKey = g.getAttribute("data-group") || "";
-        setGroup(groupKey);
+        await setGroup(groupKey);
         return;
       }
 
