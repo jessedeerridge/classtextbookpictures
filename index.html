@@ -2011,15 +2011,17 @@
     }
 
     function renderLessonBar(){
-      const hasGroup = !!getGroupByKey(currentGroupKey);
-      const lessonButtons = hasGroup ? buildLessonButtonsForGroup(currentGroupKey) : "";
+      const selectedGroup = getGroupByKey(currentGroupKey);
+      const lessonButtons = selectedGroup ? buildLessonButtonsForGroup(currentGroupKey) : "";
 
       lessonRow.innerHTML = `
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;">
-          ${buildGroupButtons()}
-          ${hasGroup ? `<span style="width:1px;height:24px;background:rgba(111,71,43,.18);"></span>` : ""}
+          ${selectedGroup
+            ? `<button class="lessonBtn active" data-group="${escapeHtml(selectedGroup.key)}" aria-label="選択中のクラス">${escapeHtml(selectedGroup.label)}</button>`
+            : buildGroupButtons()}
+          ${selectedGroup ? `<span style="width:1px;height:24px;background:rgba(111,71,43,.18);"></span>` : ""}
           ${lessonButtons}
-          ${hasGroup ? `<button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button>` : ""}
+          ${selectedGroup ? `<button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button>` : ""}
         </div>
       `;
     }
@@ -2417,8 +2419,8 @@
       if(!Number.isInteger(idx) || idx < 0 || idx >= n) return;
       const item = lessonItems[idx];
       if(!item) return;
-      await preloadItemImage(item);
       showOneItemInstant(item);
+      preloadItemImage(item);
     }
 
     function showOneItemInstant(item){
@@ -2477,6 +2479,13 @@
         idx = (idx + 1) % shuffleCandidates.length;
       }
       return shuffleCandidates[idx] || shuffleCandidates[0];
+    }
+
+    function warmupLessonImages(items, limit=3){
+      const targets = (items || []).slice(0, Math.max(0, limit));
+      for(const item of targets){
+        preloadItemImage(item);
+      }
     }
 
     async function preloadItemImage(item){
@@ -2561,7 +2570,7 @@
         const first = pickNextItemAvoidSame();
         if(!first) return;
         showOneItemInstant(first);
-        await preloadItemImage(first);
+        preloadItemImage(first);
       }
 
       let totalMs = getCssNumber("--shuffleTotalMs", 420);
@@ -2908,6 +2917,8 @@
         lessonItems = arr;
         currentItem = null;
         currentIndex = -1;
+        renderStageBranchBar();
+        renderStageIndexBar();
 
         if(!lessonItems.length){
           renderStageEmpty("このページにはカードがありません");
@@ -2917,8 +2928,8 @@
         }
 
         const first = lessonItems[pickRandomIndexAvoidSame(-1)];
-        await preloadItemImage(first);
         showOneItemInstant(first);
+        warmupLessonImages([first, ...lessonItems.filter(it => it.id !== first.id)], 4);
       }catch(err){
         renderStageEmpty("読み込みエラー");
         placeholder.querySelector(".s").textContent = String(err?.message || err || "");
