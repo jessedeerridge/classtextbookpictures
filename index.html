@@ -144,6 +144,38 @@
       gap:8px;
     }
 
+    .branchBar{
+      width:100%;
+      min-height:26px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      justify-content:center;
+      pointer-events:auto;
+    }
+    .branchBtn{
+      appearance:none;
+      border:1px solid rgba(111,71,43,.24);
+      background: rgba(255,255,255,.75);
+      color: rgba(79,52,34,.95);
+      border-radius:999px;
+      min-width:36px;
+      height:24px;
+      padding:0 10px;
+      font-size:11px;
+      font-weight:900;
+      line-height:1;
+      cursor:pointer;
+      backdrop-filter: blur(8px);
+    }
+    .branchBtn.active{
+      border-color: rgba(79,124,255,.7);
+      background: rgba(79,124,255,.2);
+      color:#243044;
+      box-shadow: 0 0 0 2px rgba(79,124,255,.20) inset;
+    }
+    .branchList{display:flex;flex-direction:column;gap:6px;}
+
     .viewerNoSelect,
     .viewerNoSelect *{
       user-select:none;
@@ -1194,6 +1226,7 @@
     <!-- 非ログイン時（閲覧側） -->
     <div class="viewer" id="viewer">
       <div class="stageWrap">
+        <div class="branchBar" id="branchBar"></div>
         <div class="stageIndexBar" id="stageIndexBar"></div>
 
         <div class="stage" id="stage" aria-label="image-stage">
@@ -1291,6 +1324,28 @@
           </div>
 
           <button class="btn primary" id="btnAddSpecial">スペシャルカードを追加</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panelHead">
+          <div class="panelTitle">ページ分岐（選択中のLから移動）</div>
+          <div class="status" id="statusBranch"></div>
+        </div>
+        <div class="panelBody" style="grid-template-columns: 1fr 1fr auto; align-items:end;">
+          <div class="field">
+            <div class="label">ボタン表示名</div>
+            <input class="input" id="branchLabel" placeholder="例：L2へ / 復習 / 発展" />
+          </div>
+          <div class="field">
+            <div class="label">移動先の課（L）</div>
+            <select class="input" id="branchTargetLesson"></select>
+          </div>
+          <button class="btn primary" id="btnAddBranch">分岐ボタンを追加</button>
+          <div class="field" style="grid-column: 1 / -1;">
+            <div class="hint">再生画面では、この分岐ボタンがページ番号の上に表示されます。</div>
+            <div class="branchList" id="branchList"></div>
+          </div>
         </div>
       </section>
 
@@ -1558,6 +1613,7 @@
     const reel = $("#reel");
     const placeholder = $("#placeholder");
     const viewerOverlay = $("#viewerOverlay");
+    const branchBar = $("#branchBar");
     const stageIndexBar = $("#stageIndexBar");
     const loadingDots = $("#loadingDots");
 
@@ -1584,6 +1640,11 @@
     const adminLesson = $("#adminLesson");
     const adminGroup = $("#adminGroup");
     const btnRefresh = $("#btnRefresh");
+    const statusBranchEl = $("#statusBranch");
+    const branchLabel = $("#branchLabel");
+    const branchTargetLesson = $("#branchTargetLesson");
+    const btnAddBranch = $("#btnAddBranch");
+    const branchList = $("#branchList");
     const fTalkQuick = $("#fTalkQuick");
     const fFile = $("#fFile");
     const btnUpload = $("#btnUpload");
@@ -1688,6 +1749,7 @@
     let currentLessonKey = "";
     let currentGroupKey = "";
     let lessonItems = [];
+    let lessonBranches = [];
     let currentItem = null;
     let currentIndex = -1;
 
@@ -1907,6 +1969,7 @@
       currentItem = null;
       currentIndex = -1;
       lessonItems = [];
+      lessonBranches = [];
       renderStageEmpty("", "");
       try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
     }
@@ -1920,6 +1983,7 @@
       const firstGroupKey = LESSON_GROUPS[0]?.key || "";
       const initialGroupKey = getGroupByLesson(currentLessonKey)?.key || currentGroupKey || firstGroupKey;
       syncAdminLessonOptions(initialGroupKey, currentLessonKey || firstLesson);
+      renderAdminBranchLessonOptions();
     }
 
     function syncAdminLessonOptions(groupKey, preferredLessonKey){
@@ -1967,6 +2031,7 @@
       shuffleToken++;
 
       if(!silent) saveLastLesson(key);
+      loadLessonBranchesForViewer(key);
       loadLessonItemsForViewer(key);
     }
 
@@ -2220,6 +2285,7 @@
       slotNext.innerHTML = "";
 
       viewerOverlay.innerHTML = "";
+      if(branchBar) branchBar.innerHTML = "";
       if(stageIndexBar) stageIndexBar.innerHTML = "";
       updateFirstLine(null);
 
@@ -2272,6 +2338,48 @@
       el.style.transform = `translate3d(${percent}%,0,0)`;
     }
 
+    function renderBranchBar(){
+      if(!branchBar) return;
+      if(!lessonBranches.length){
+        branchBar.innerHTML = "";
+        return;
+      }
+
+      branchBar.innerHTML = lessonBranches.map((b)=>{
+        const active = b.targetLessonKey === currentLessonKey;
+        const label = (b.label || "").trim() || "分岐";
+        return `<button class="branchBtn ${active ? "active" : ""}" data-branch-target="${escapeHtml(b.targetLessonKey)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
+      }).join("");
+    }
+
+    async function loadLessonBranchesForViewer(lessonKey){
+      lessonBranches = [];
+      renderBranchBar();
+      if(!db || !lessonKey) return;
+
+      try{
+        const snap = await db.ref(`${PATH_LESSONS}/${lessonKey}/branches`).get();
+        const arr = [];
+        snap.forEach((child)=>{
+          const v = child.val() || {};
+          const targetLessonKey = String(v.targetLessonKey || "");
+          if(!targetLessonKey || !LESSONS.some(x=>x.key===targetLessonKey)) return;
+          arr.push({
+            id: child.key,
+            label: String(v.label || "").trim() || `→ ${targetLessonKey.toUpperCase()}`,
+            targetLessonKey,
+            order: Number(v.order || v.createdAt || 0) || 0
+          });
+        });
+        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        lessonBranches = arr;
+      }catch(_){
+        lessonBranches = [];
+      }
+
+      renderBranchBar();
+    }
+
     function renderStageIndexBar(){
       if(!stageIndexBar) return;
       if(!lessonItems.length){
@@ -2300,6 +2408,7 @@
         slotCur.innerHTML  = "";
         slotNext.innerHTML = "";
         viewerOverlay.innerHTML = "";
+        if(branchBar) branchBar.innerHTML = "";
         if(stageIndexBar) stageIndexBar.innerHTML = "";
         updateFirstLine(null);
         currentItem = null;
@@ -2895,10 +3004,122 @@
         renderAdminList(arr);
 
         setStatus2(`OK（${arr.length}件）`, "ok");
+        loadAdminBranches();
         setTimeout(()=>setStatus2("", null), 900);
       }catch(err){
         setStatus2(err?.message || String(err || ""), "err");
         renderAdminList([]);
+        renderAdminBranches([]);
+      }
+    }
+
+    function renderAdminBranchLessonOptions(){
+      if(!branchTargetLesson) return;
+      branchTargetLesson.innerHTML = LESSONS.map(lesson => `<option value="${escapeHtml(lesson.key)}">${escapeHtml(lesson.label)}</option>`).join("");
+      if(currentLessonKey && LESSONS.some(x=>x.key===currentLessonKey)){
+        branchTargetLesson.value = currentLessonKey;
+      }
+    }
+
+    function renderAdminBranches(items){
+      if(!branchList) return;
+      const arr = Array.isArray(items) ? items : [];
+      if(!arr.length){
+        branchList.innerHTML = `<div class="hint">分岐はまだありません。</div>`;
+        return;
+      }
+      branchList.innerHTML = arr.map(it => `
+        <div class="qItem" data-branch-id="${escapeHtml(it.id)}" style="margin-top:8px;grid-template-columns:1fr auto;">
+          <div class="qMeta" style="padding-right:8px;">
+            <div class="qLine"><b>${escapeHtml(it.label)}</b> → ${escapeHtml((LESSONS.find(x=>x.key===it.targetLessonKey)?.label) || it.targetLessonKey)}</div>
+          </div>
+          <div class="qBtns" style="align-self:center;">
+            <button class="btn small danger" data-branch-del="${escapeHtml(it.id)}">削除</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function loadAdminBranches(){
+      try{
+        if(!db) return;
+        const lessonKey = adminLesson.value;
+        if(!lessonKey){
+          renderAdminBranches([]);
+          return;
+        }
+        const snap = await db.ref(`${PATH_LESSONS}/${lessonKey}/branches`).get();
+        const arr = [];
+        snap.forEach((child)=>{
+          const v = child.val() || {};
+          const targetLessonKey = String(v.targetLessonKey || "");
+          if(!targetLessonKey) return;
+          arr.push({
+            id: child.key,
+            label: String(v.label || "").trim() || `→ ${targetLessonKey.toUpperCase()}`,
+            targetLessonKey,
+            order: Number(v.order || v.createdAt || 0) || 0
+          });
+        });
+        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        renderAdminBranches(arr);
+      }catch(_){
+        renderAdminBranches([]);
+      }
+    }
+
+    async function addBranch(){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const lessonKey = adminLesson.value;
+        const targetLessonKey = (branchTargetLesson?.value || "").trim();
+        const label = (branchLabel?.value || "").trim() || `→ ${(LESSONS.find(x=>x.key===targetLessonKey)?.label) || targetLessonKey}`;
+
+        if(!lessonKey) throw new Error("登録元の課を選択してください。");
+        if(!targetLessonKey) throw new Error("移動先の課を選択してください。");
+
+        setBranchStatus("分岐を保存中...", null);
+
+        const payload = {
+          label,
+          targetLessonKey,
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          order: firebase.database.ServerValue.TIMESTAMP,
+          createdBy: currentUser.uid,
+          createdByEmail: currentUser.email || ""
+        };
+
+        await db.ref(`${PATH_LESSONS}/${lessonKey}/branches`).push(payload);
+
+        if(branchLabel) branchLabel.value = "";
+        setBranchStatus("追加しました ✅", "ok");
+        setTimeout(()=>setBranchStatus("", null), 900);
+
+        await loadAdminBranches();
+        if(currentLessonKey === lessonKey) loadLessonBranchesForViewer(lessonKey);
+      }catch(err){
+        setBranchStatus(err?.message || String(err || ""), "err");
+      }
+    }
+
+    async function deleteBranch(branchId){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+
+        const lessonKey = adminLesson.value;
+        if(!lessonKey || !branchId) return;
+
+        await db.ref(`${PATH_LESSONS}/${lessonKey}/branches/${branchId}`).remove();
+        setBranchStatus("削除しました ✅", "ok");
+        setTimeout(()=>setBranchStatus("", null), 900);
+
+        await loadAdminBranches();
+        if(currentLessonKey === lessonKey) loadLessonBranchesForViewer(lessonKey);
+      }catch(err){
+        setBranchStatus(err?.message || String(err || ""), "err");
       }
     }
 
@@ -3830,11 +4051,15 @@
           updateAuthUI();
 
           if(!isAdminSignedIn()){
-            if(currentLessonKey) loadLessonItemsForViewer(currentLessonKey);
+            if(currentLessonKey){
+              loadLessonBranchesForViewer(currentLessonKey);
+              loadLessonItemsForViewer(currentLessonKey);
+            }
             else renderStageEmpty("", "");
             return;
           }
           loadAdminList();
+          loadAdminBranches();
         });
 
         const lastLesson = loadLastLesson();
@@ -3842,6 +4067,7 @@
         currentGroupKey = getGroupByLesson(currentLessonKey)?.key || "";
         buildLessonUI();
         if(currentLessonKey){
+          loadLessonBranchesForViewer(currentLessonKey);
           loadLessonItemsForViewer(currentLessonKey);
         }else{
           renderStageEmpty("", "");
@@ -3903,6 +4129,18 @@
     btnAuthDo.addEventListener("click", doAuth);
     authPass.addEventListener("keydown", (e)=>{ if(e.key==="Enter") doAuth(); });
 
+    branchBar.addEventListener("pointerdown", (e)=>{
+      e.stopPropagation();
+    });
+    branchBar.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      const b = e.target.closest("[data-branch-target]");
+      if(!b) return;
+      const target = b.getAttribute("data-branch-target") || "";
+      if(!target) return;
+      setLesson(target, false);
+    });
+
     stageIndexBar.addEventListener("pointerdown", (e)=>{
       e.stopPropagation();
     });
@@ -3962,6 +4200,12 @@
 
     btnUpload.addEventListener("click", uploadImagesBatch);
     btnAddSpecial.addEventListener("click", addSpecialCard);
+    btnAddBranch.addEventListener("click", addBranch);
+    branchList.addEventListener("click", (e)=>{
+      const btn = e.target.closest("[data-branch-del]");
+      if(!btn) return;
+      deleteBranch(btn.getAttribute("data-branch-del") || "");
+    });
 
     queueBody.addEventListener("click", (e)=>{
       const btn = e.target.closest('[data-q-action="rm"]');
@@ -3980,17 +4224,26 @@
     dropZone.addEventListener("dragleave", onDropZoneDragLeave);
     dropZone.addEventListener("drop", onDropZoneDrop);
 
-    btnRefresh.addEventListener("click", loadAdminList);
+    btnRefresh.addEventListener("click", async ()=>{
+      await loadAdminList();
+      await loadAdminBranches();
+    });
     adminGroup.addEventListener("change", async ()=>{
       syncAdminLessonOptions(adminGroup.value, adminLesson.value);
+      if(branchTargetLesson) branchTargetLesson.value = adminLesson.value;
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
+      await loadAdminBranches();
     });
     adminLesson.addEventListener("change", async ()=>{
+      const lessonKey = adminLesson.value;
+      saveLastLesson(lessonKey);
+      if(branchTargetLesson) branchTargetLesson.value = lessonKey;
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
+      await loadAdminBranches();
     });
 
     btnToggleSelect.addEventListener("click", ()=>{
