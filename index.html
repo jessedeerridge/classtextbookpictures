@@ -1278,11 +1278,15 @@
             <div class="label">登録するページ分岐</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <select class="input" id="adminPage" style="flex:1;min-width:220px;"></select>
+              <input class="input" id="pageLabelInput" placeholder="選択中ページの表示名" style="flex:1;min-width:180px;" />
+              <button class="btn small" id="btnRenamePage" type="button">名前変更</button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="newPageLabel" placeholder="例：A / B / 発展" style="flex:1;min-width:180px;" />
               <button class="btn small primary" id="btnAddPage" type="button">分岐追加</button>
               <button class="btn small danger" id="btnDeletePage" type="button">分岐削除</button>
             </div>
-            <div class="hint">Lごとにページ分岐を追加できます。メインページは削除できません。</div>
+            <div class="hint">メインも分岐も名前変更できます。分岐はLごと・クラスごとに独立して保存され、メインページだけ削除不可です。</div>
           </div>
         </div>
       </section>
@@ -1583,14 +1587,20 @@
 
     const DEFAULT_PAGE_KEY = "main";
 
-    function pageItemsPath(lessonKey, pageKey){
-      return pageKey === DEFAULT_PAGE_KEY
-        ? `${PATH_LESSONS}/${lessonKey}/items`
-        : `${PATH_LESSONS}/${lessonKey}/branches/${pageKey}/items`;
+    function lessonPath(groupKey, lessonKey){
+      return `${PATH_LESSONS}/${groupKey}/${lessonKey}`;
     }
 
-    function pageMetaPath(lessonKey, pageKey){
-      return `${PATH_LESSONS}/${lessonKey}/branches/${pageKey}/meta`;
+    function pageItemsPath(groupKey, lessonKey, pageKey){
+      return pageKey === DEFAULT_PAGE_KEY
+        ? `${lessonPath(groupKey, lessonKey)}/items`
+        : `${lessonPath(groupKey, lessonKey)}/branches/${pageKey}/items`;
+    }
+
+    function pageMetaPath(groupKey, lessonKey, pageKey){
+      return pageKey === DEFAULT_PAGE_KEY
+        ? `${lessonPath(groupKey, lessonKey)}/meta`
+        : `${lessonPath(groupKey, lessonKey)}/branches/${pageKey}/meta`;
     }
 
     const $ = (s)=>document.querySelector(s);
@@ -1637,7 +1647,9 @@
     const status2El = $("#status2");
     const adminLesson = $("#adminLesson");
     const adminPage = $("#adminPage");
+    const pageLabelInput = $("#pageLabelInput");
     const newPageLabel = $("#newPageLabel");
+    const btnRenamePage = $("#btnRenamePage");
     const btnAddPage = $("#btnAddPage");
     const btnDeletePage = $("#btnDeletePage");
     const adminGroup = $("#adminGroup");
@@ -1747,6 +1759,7 @@
     let currentGroupKey = "";
     let lessonItems = [];
     let lessonPages = [{ key: DEFAULT_PAGE_KEY, label: "メイン" }];
+    let currentPageLabel = "メイン";
     let currentPageKey = DEFAULT_PAGE_KEY;
     let currentItem = null;
     let currentIndex = -1;
@@ -1980,7 +1993,7 @@
       const firstGroupKey = LESSON_GROUPS[0]?.key || "";
       const initialGroupKey = getGroupByLesson(currentLessonKey)?.key || currentGroupKey || firstGroupKey;
       syncAdminLessonOptions(initialGroupKey, currentLessonKey || firstLesson);
-      syncAdminPageOptions(adminLesson.value, DEFAULT_PAGE_KEY);
+      syncAdminPageOptions(adminGroup.value, adminLesson.value, DEFAULT_PAGE_KEY);
     }
 
     function syncAdminLessonOptions(groupKey, preferredLessonKey){
@@ -2027,19 +2040,21 @@
 
       shuffleToken++;
 
-      if(!silent) saveLastLesson(key);
-      loadLessonItemsForViewer(key, DEFAULT_PAGE_KEY);
+      if(!silent) saveLastLesson(currentGroupKey, key);
+      loadLessonItemsForViewer(currentGroupKey, key, DEFAULT_PAGE_KEY);
     }
 
-    function saveLastLesson(key){
-      try{ localStorage.setItem("lessonCards:lastLesson", key); }catch(_){}
+    function saveLastLesson(groupKey, lessonKey){
+      try{ localStorage.setItem("lessonCards:lastLesson", JSON.stringify({ groupKey, lessonKey })); }catch(_){}
     }
     function loadLastLesson(){
       try{
         const v = localStorage.getItem("lessonCards:lastLesson");
-        if(v && LESSONS.some(x=>x.key===v)) return v;
+        if(!v) return null;
+        const parsed = JSON.parse(v);
+        if(parsed && parsed.groupKey && parsed.lessonKey) return parsed;
       }catch(_){ }
-      return "";
+      return null;
     }
 
     function getCssNumber(varName, fallback){
@@ -2748,11 +2763,14 @@
     // DB: Load lesson items for viewer
     // ✅ orderで並び
     // =========================
-    async function loadLessonPages(lessonKey){
+    async function loadLessonPages(groupKey, lessonKey){
       const pages = [{ key: DEFAULT_PAGE_KEY, label: "メイン" }];
-      if(!db || !lessonKey) return pages;
+      if(!db || !groupKey || !lessonKey) return pages;
 
-      const snap = await db.ref(`${PATH_LESSONS}/${lessonKey}/branches`).get();
+      const mainMeta = (await db.ref(pageMetaPath(groupKey, lessonKey, DEFAULT_PAGE_KEY)).get()).val() || {};
+      pages[0].label = String(mainMeta.label || "メイン");
+
+      const snap = await db.ref(`${lessonPath(groupKey, lessonKey)}/branches`).get();
       snap.forEach(child=>{
         const v = child.val() || {};
         pages.push({
@@ -2763,24 +2781,33 @@
       return pages;
     }
 
-    async function syncAdminPageOptions(lessonKey, preferredPageKey){
-      lessonPages = await loadLessonPages(lessonKey);
-      adminPage.innerHTML = lessonPages.map(page => `<option value="${escapeHtml(page.key)}">${escapeHtml(page.label)}</option>`).join("");
-      const exists = lessonPages.some(page => page.key === preferredPageKey);
-      adminPage.value = exists ? preferredPageKey : DEFAULT_PAGE_KEY;
+    function syncPageLabelInput(){
+      const hit = lessonPages.find(page => page.key === (adminPage.value || DEFAULT_PAGE_KEY));
+      pageLabelInput.value = hit?.label || "";
+      currentPageLabel = hit?.label || "";
       btnDeletePage.disabled = adminPage.value === DEFAULT_PAGE_KEY;
     }
 
-    async function loadLessonItemsForViewer(lessonKey, pageKey = DEFAULT_PAGE_KEY){
+    async function syncAdminPageOptions(groupKey, lessonKey, preferredPageKey){
+      lessonPages = await loadLessonPages(groupKey, lessonKey);
+      adminPage.innerHTML = lessonPages.map(page => `<option value="${escapeHtml(page.key)}">${escapeHtml(page.label)}</option>`).join("");
+      const exists = lessonPages.some(page => page.key === preferredPageKey);
+      adminPage.value = exists ? preferredPageKey : DEFAULT_PAGE_KEY;
+      syncPageLabelInput();
+    }
+
+    async function loadLessonItemsForViewer(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
       try{
         if(!db) return;
 
+        currentGroupKey = groupKey || currentGroupKey;
         currentLessonKey = lessonKey || "";
-        lessonPages = await loadLessonPages(lessonKey);
+        lessonPages = await loadLessonPages(currentGroupKey, lessonKey);
         currentPageKey = lessonPages.some(page => page.key === pageKey) ? pageKey : DEFAULT_PAGE_KEY;
+        currentPageLabel = (lessonPages.find(page => page.key === currentPageKey)?.label) || "";
         renderStageBranchBar();
 
-        const ref = db.ref(pageItemsPath(lessonKey, currentPageKey));
+        const ref = db.ref(pageItemsPath(currentGroupKey, lessonKey, currentPageKey));
         const snap = await ref.get();
         const arr = [];
         snap.forEach(child=>{
@@ -2934,12 +2961,13 @@
     async function loadAdminList(){
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
+        const groupKey = adminGroup.value;
         const lessonKey = adminLesson.value;
         const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
 
         setStatus2("読み込み中...", null);
 
-        const ref = db.ref(pageItemsPath(lessonKey, pageKey));
+        const ref = db.ref(pageItemsPath(groupKey, lessonKey, pageKey));
         const snap = await ref.get();
         const arr = [];
         snap.forEach(child=>{
@@ -3007,17 +3035,39 @@
     }
 
 
+    async function renameCurrentPage(){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+        const groupKey = adminGroup.value;
+        const lessonKey = adminLesson.value;
+        const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
+        const label = (pageLabelInput.value || "").trim();
+        if(!label) throw new Error("ページ名を入力してください。");
+        await db.ref(pageMetaPath(groupKey, lessonKey, pageKey)).update({ label, updatedAt: Date.now(), updatedBy: currentUser.uid });
+        await syncAdminPageOptions(groupKey, lessonKey, pageKey);
+        if(currentGroupKey === groupKey && currentLessonKey === lessonKey){
+          currentPageLabel = label;
+          renderStageBranchBar();
+        }
+        setStatus2(`ページ名を「${label}」に変更しました`, "ok");
+      }catch(err){
+        setStatus2(err?.message || String(err||""), "err");
+      }
+    }
+
     async function addBranchPage(){
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
         if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+        const groupKey = adminGroup.value;
         const lessonKey = adminLesson.value;
         const label = (newPageLabel.value || "").trim();
         if(!label) throw new Error("分岐名を入力してください。");
-        const ref = db.ref(`${PATH_LESSONS}/${lessonKey}/branches`).push();
+        const ref = db.ref(`${lessonPath(groupKey, lessonKey)}/branches`).push();
         await ref.set({ meta: { label, createdAt: Date.now(), createdBy: currentUser.uid } });
         newPageLabel.value = "";
-        await syncAdminPageOptions(lessonKey, ref.key);
+        await syncAdminPageOptions(groupKey, lessonKey, ref.key);
         await loadAdminList();
         setStatus2(`分岐「${label}」を追加しました`, "ok");
       }catch(err){
@@ -3029,11 +3079,12 @@
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
         if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+        const groupKey = adminGroup.value;
         const lessonKey = adminLesson.value;
         const pageKey = adminPage.value;
         if(pageKey === DEFAULT_PAGE_KEY) throw new Error("メインページは削除できません。");
-        await db.ref(`${PATH_LESSONS}/${lessonKey}/branches/${pageKey}`).remove();
-        await syncAdminPageOptions(lessonKey, DEFAULT_PAGE_KEY);
+        await db.ref(`${lessonPath(groupKey, lessonKey)}/branches/${pageKey}`).remove();
+        await syncAdminPageOptions(groupKey, lessonKey, DEFAULT_PAGE_KEY);
         await loadAdminList();
         setStatus2("分岐を削除しました", "ok");
       }catch(err){
@@ -3181,7 +3232,7 @@
               createdByEmail: currentUser.email || ""
             };
 
-            const ref = db.ref(pageItemsPath(lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
+            const ref = db.ref(pageItemsPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
             await ref.set(payload);
 
             setQueueProgress(it.id, 100);
@@ -3247,7 +3298,7 @@
           createdByEmail: currentUser.email || ""
         };
 
-        const ref = db.ref(pageItemsPath(lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
+        const ref = db.ref(pageItemsPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
         await ref.set(payload);
 
         spTalk.value = "";
@@ -3261,7 +3312,7 @@
       }
     }
 
-    async function deleteItem(lessonKey, pageKey, id){
+    async function deleteItem(groupKey, lessonKey, pageKey, id){
       try{
         if(!db) throw new Error("Firebaseが初期化できていません。");
         if(!isAdminSignedIn()) throw new Error("ログインしてください。");
@@ -3273,7 +3324,7 @@
         const ok = confirm("削除しますか？");
         if(!ok) return;
 
-        await db.ref(`${pageItemsPath(lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${id}`).remove();
+        await db.ref(`${pageItemsPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${id}`).remove();
         setStatus2("削除しました ✅", "ok");
         setTimeout(()=>setStatus2("", null), 900);
         loadAdminList();
@@ -3334,13 +3385,13 @@
         };
 
         setStatus2("連結カードを保存中...", null);
-        const ref = db.ref(pageItemsPath(lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
+        const ref = db.ref(pageItemsPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
         await ref.set(payload);
 
         selectedIds.clear();
         updateSelectButtons();
-        await syncAdminPageOptions(adminLesson.value, adminPage.value || DEFAULT_PAGE_KEY);
-      await loadAdminList();
+        await syncAdminPageOptions(adminGroup.value, adminLesson.value, adminPage.value || DEFAULT_PAGE_KEY);
+        await loadAdminList();
 
         setStatus2("連結して保存しました ✅", "ok");
         setTimeout(()=>setStatus2("", null), 900);
@@ -3816,6 +3867,7 @@
 
       editTarget = {
         lessonKey,
+        groupKey: adminGroup.value,
         pageKey: adminPage.value || DEFAULT_PAGE_KEY,
         id,
         isSpecial: isSp,
@@ -3878,7 +3930,7 @@
           overlays: overlaysToSave
         };
 
-        await db.ref(`${pageItemsPath(lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
+        await db.ref(`${pageItemsPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
 
         showEditModal(false);
         editTarget = null;
@@ -3896,23 +3948,23 @@
     async function deleteFromEditor(){
       try{
         if(!editTarget) return;
-        const { lessonKey, id } = editTarget;
+        const { groupKey, lessonKey, pageKey, id } = editTarget;
         showEditModal(false);
         editTarget = null;
-        await deleteItem(lessonKey, adminPage.value || DEFAULT_PAGE_KEY, id);
+        await deleteItem(groupKey || adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY, id);
       }catch(_){}
     }
 
     // =========================
     // ✅ 並び替え：ドラッグ&ドロップで order を再採番して保存
     // =========================
-    function renumberOrdersAndSave(lessonKey, pageKey, items){
+    function renumberOrdersAndSave(groupKey, lessonKey, pageKey, items){
       const base = 1000;
       const updates = {};
       items.forEach((it, idx)=>{
         const ord = (idx + 1) * base;
         it.order = ord;
-        updates[`${pageItemsPath(lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
+        updates[`${pageItemsPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
       });
       return db.ref().update(updates);
     }
@@ -3973,20 +4025,20 @@
           updateAuthUI();
 
           if(!isAdminSignedIn()){
-            if(currentLessonKey) loadLessonItemsForViewer(currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY);
+            if(currentLessonKey) loadLessonItemsForViewer(currentGroupKey, currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY);
             else renderStageEmpty("", "");
             return;
           }
-          await syncAdminPageOptions(adminLesson.value || currentLessonKey || LESSONS[0]?.key || DEFAULT_PAGE_KEY, adminPage.value || DEFAULT_PAGE_KEY);
+          await syncAdminPageOptions(adminGroup.value || currentGroupKey || LESSON_GROUPS[0]?.key || "", adminLesson.value || currentLessonKey || LESSONS[0]?.key || "", adminPage.value || DEFAULT_PAGE_KEY);
           loadAdminList();
         });
 
         const lastLesson = loadLastLesson();
-        currentLessonKey = lastLesson || "";
-        currentGroupKey = getGroupByLesson(currentLessonKey)?.key || "";
+        currentLessonKey = lastLesson?.lessonKey || "";
+        currentGroupKey = lastLesson?.groupKey || "";
         buildLessonUI();
         if(currentLessonKey){
-          loadLessonItemsForViewer(currentLessonKey, DEFAULT_PAGE_KEY)
+          loadLessonItemsForViewer(currentGroupKey, currentLessonKey, DEFAULT_PAGE_KEY)
         }else{
           renderStageEmpty("", "");
         }
@@ -4052,7 +4104,7 @@
       if(!b || !currentLessonKey) return;
       const pageKey = b.getAttribute("data-page-key") || DEFAULT_PAGE_KEY;
       if(pageKey === currentPageKey) return;
-      await loadLessonItemsForViewer(currentLessonKey, pageKey);
+      await loadLessonItemsForViewer(currentGroupKey, currentLessonKey, pageKey);
     });
 
     stageIndexBar.addEventListener("pointerdown", (e)=>{
@@ -4114,6 +4166,7 @@
 
     btnUpload.addEventListener("click", uploadImagesBatch);
     btnAddSpecial.addEventListener("click", addSpecialCard);
+    btnRenamePage.addEventListener("click", renameCurrentPage);
     btnAddPage.addEventListener("click", addBranchPage);
     btnDeletePage.addEventListener("click", deleteBranchPage);
 
@@ -4137,20 +4190,20 @@
     btnRefresh.addEventListener("click", loadAdminList);
     adminGroup.addEventListener("change", async ()=>{
       syncAdminLessonOptions(adminGroup.value, adminLesson.value);
-      await syncAdminPageOptions(adminLesson.value, adminPage.value || DEFAULT_PAGE_KEY);
+      await syncAdminPageOptions(adminGroup.value, adminLesson.value, adminPage.value || DEFAULT_PAGE_KEY);
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
     });
     adminLesson.addEventListener("change", async ()=>{
-      await syncAdminPageOptions(adminLesson.value, DEFAULT_PAGE_KEY);
+      await syncAdminPageOptions(adminGroup.value, adminLesson.value, DEFAULT_PAGE_KEY);
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
     });
 
     adminPage.addEventListener("change", async ()=>{
-      btnDeletePage.disabled = adminPage.value === DEFAULT_PAGE_KEY;
+      syncPageLabelInput();
       selectedIds.clear();
       updateSelectButtons();
       await loadAdminList();
@@ -4183,7 +4236,7 @@
       if(delBtn){
         const card = delBtn.closest(".card");
         const id = card?.getAttribute("data-id") || "";
-        if(id) deleteItem(lessonKey, adminPage.value || DEFAULT_PAGE_KEY, id);
+        if(id) deleteItem(adminGroup.value, lessonKey, adminPage.value || DEFAULT_PAGE_KEY, id);
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -4269,7 +4322,7 @@
 
       try{
         setStatus2("並び替え保存中...", null);
-        await renumberOrdersAndSave(lessonKey, adminPage.value || DEFAULT_PAGE_KEY, arr);
+        await renumberOrdersAndSave(adminGroup.value, lessonKey, adminPage.value || DEFAULT_PAGE_KEY, arr);
         lastRendered = arr;
         renderAdminList(arr);
         suppressNextCardClick = true;
