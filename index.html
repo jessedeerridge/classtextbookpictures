@@ -356,7 +356,7 @@
       position:relative;
       display:none;
       animation: loadingSpin 1.15s linear infinite;
-      filter: drop-shadow(0 0 10px rgba(79,124,255,.26));
+      filter: drop-shadow(0 0 10px rgba(70,70,70,.28));
     }
     .loadingDots.show{ display:block; }
     .loadingDots span{
@@ -367,7 +367,7 @@
       height:8px;
       margin:-4px;
       border-radius:999px;
-      background: rgba(232,238,247,.92);
+      background: rgba(70,70,70,.95);
       transform: rotate(calc(60deg * var(--i))) translateY(-22px);
       opacity:.2;
       animation: loadingFade 0.9s linear infinite;
@@ -2081,19 +2081,25 @@
 
       shuffleToken++;
 
-      if(!silent) saveLastLesson(currentGroupKey, key);
+      if(!silent) saveLastLesson(currentGroupKey, key, DEFAULT_PAGE_KEY);
       loadLessonItemsForViewer(currentGroupKey, key, DEFAULT_PAGE_KEY);
     }
 
-    function saveLastLesson(groupKey, lessonKey){
-      try{ localStorage.setItem("lessonCards:lastLesson", JSON.stringify({ groupKey, lessonKey })); }catch(_){ }
+    function saveLastLesson(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
+      try{ localStorage.setItem("lessonCards:lastLesson", JSON.stringify({ groupKey, lessonKey, pageKey })); }catch(_){ }
     }
     function loadLastLesson(){
       try{
         const v = localStorage.getItem("lessonCards:lastLesson");
         if(!v) return null;
         const parsed = JSON.parse(v);
-        if(parsed && parsed.groupKey && parsed.lessonKey) return parsed;
+        if(parsed && parsed.groupKey && parsed.lessonKey){
+          return {
+            groupKey: parsed.groupKey,
+            lessonKey: parsed.lessonKey,
+            pageKey: parsed.pageKey || DEFAULT_PAGE_KEY
+          };
+        }
       }catch(_){ }
       return null;
     }
@@ -2853,6 +2859,7 @@
         lessonPages = await loadLessonPages(currentGroupKey, lessonKey);
         currentPageKey = lessonPages.some(page => page.key === pageKey) ? pageKey : DEFAULT_PAGE_KEY;
         currentPageLabel = (lessonPages.find(page => page.key === currentPageKey)?.label) || "";
+        saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
         const ref = db.ref(pageItemsPath(currentGroupKey, lessonKey, currentPageKey));
@@ -4142,9 +4149,10 @@
         const lastLesson = loadLastLesson();
         currentLessonKey = lastLesson?.lessonKey || "";
         currentGroupKey = lastLesson?.groupKey || "";
+        currentPageKey = lastLesson?.pageKey || DEFAULT_PAGE_KEY;
         await buildLessonUI();
         if(currentLessonKey){
-          loadLessonItemsForViewer(currentGroupKey, currentLessonKey, DEFAULT_PAGE_KEY)
+          loadLessonItemsForViewer(currentGroupKey, currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY)
         }else{
           renderStageEmpty("課を追加してください", "管理画面でクラスごとに課と分岐を作成できます。", false);
         }
