@@ -2572,11 +2572,28 @@
       return shuffleCandidates[idx] || shuffleCandidates[0];
     }
 
-    function warmupLessonImages(items, limit=3){
-      const targets = (items || []).slice(0, Math.max(0, limit));
-      for(const item of targets){
-        preloadItemImage(item);
-      }
+    function preloadLessonImagesInPhases(items, requestId){
+      const targets = Array.isArray(items) ? items.filter(Boolean) : [];
+      if(!targets.length) return;
+
+      const firstBatch = targets.slice(0, 3);
+      const tailBatch = targets.slice(3);
+
+      (async ()=>{
+        for(const item of firstBatch){
+          if(requestId !== lessonLoadRequestId) return;
+          await preloadItemImage(item);
+        }
+
+        if(!tailBatch.length || requestId !== lessonLoadRequestId) return;
+
+        setTimeout(async ()=>{
+          for(const item of tailBatch){
+            if(requestId !== lessonLoadRequestId) return;
+            await preloadItemImage(item);
+          }
+        }, 0);
+      })();
     }
 
     async function preloadItemImage(item){
@@ -3024,10 +3041,10 @@
           return;
         }
 
-        const first = lessonItems[pickRandomIndexAvoidSame(-1)];
+        const first = lessonItems[0] || null;
         if(isStale()) return;
         showOneItemInstant(first);
-        warmupLessonImages([first, ...lessonItems.filter(it => it.id !== first.id)], 4);
+        preloadLessonImagesInPhases(lessonItems, requestId);
       }catch(err){
         if(isStale()) return;
         renderStageEmpty("読み込みエラー");
