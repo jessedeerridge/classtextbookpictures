@@ -54,7 +54,9 @@
       --normalShieldBg: rgba(255,255,255,.50);
       --normalShieldBgExpanded: rgba(255,255,255,.58);
       --imageOffsetY: 50px;
-      --imageFrameRatio: 11 / 13;
+      --imageFrameRatio: 1 / 1;
+      --headerH: 58px;
+      --topControlStart: 5px;
     }
 
     *{box-sizing:border-box}
@@ -143,17 +145,23 @@
       flex-direction:column;
       align-items:stretch;
       gap:8px;
+      padding-top: 66px;
       transform: translateY(-50px);
     }
 
     .stageBranchBar{
-      width:100%;
+      position:fixed;
+      left:50%;
+      top: calc(var(--headerH) + var(--topControlStart));
+      transform: translateX(-50%);
+      width: var(--cardW);
       min-height:30px;
       display:flex;
       flex-wrap:wrap;
       gap:8px;
       justify-content:center;
       pointer-events:auto;
+      z-index:46;
     }
     .branchBtn{
       appearance:none;
@@ -226,7 +234,6 @@
 
     .slotFrame{
       width: calc(100% - 24px);
-      max-height: calc(100% - 24px);
       aspect-ratio: var(--imageFrameRatio);
       border-radius: 16px;
       border:1px solid rgba(111,71,43,.18);
@@ -500,13 +507,18 @@
     }
 
     .stageIndexBar{
-      width:100%;
+      position:fixed;
+      left:50%;
+      top: calc(var(--headerH) + var(--topControlStart) + 38px);
+      transform: translateX(-50%);
+      width: var(--cardW);
       min-height:24px;
       display:grid;
       grid-template-columns: repeat(10, minmax(0, 1fr));
       gap:6px;
       justify-content:start;
       pointer-events:auto;
+      z-index:46;
     }
     .idxBtn{
       appearance:none;
@@ -555,11 +567,13 @@
     }
 
     .lessonBar{
-      position:fixed; left:0; right:0; bottom:0; z-index:40;
-      border-top:1px solid var(--line);
-      background: rgba(255,248,234,.9);
+      position:fixed; left:8px; right:8px; bottom:max(8px, env(safe-area-inset-bottom)); z-index:60;
+      border:1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,248,234,.94);
       backdrop-filter: blur(10px);
-      padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+      padding:10px 10px;
+      box-shadow: 0 10px 24px rgba(111,71,43,.18);
     }
     .lessonRow{
       max-width:1100px;
