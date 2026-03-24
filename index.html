@@ -22,8 +22,10 @@
       --shadow:0 14px 36px rgba(111,71,43,.22);
       --radius:18px;
 
+      --headerH: 58px;
       --cardW: min(86vw, 440px);
       --cardH: min(56vh, 460px);
+      --lessonBarReserve: calc(78px + env(safe-area-inset-bottom));
 
       --shuffleTotalMs: 420;
       --shuffleSteps: 10;
@@ -54,11 +56,12 @@
       --normalShieldBg: rgba(255,255,255,.50);
       --normalShieldBgExpanded: rgba(255,255,255,.58);
       --imageOffsetY: 50px;
-      --imageFrameRatio: 11 / 13;
+      --imageFrameRatio: 1 / 1;
     }
 
     *{box-sizing:border-box}
     html,body{height:100%}
+    html,body{overflow-x:hidden}
     body{
       margin:0;
       font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
@@ -122,7 +125,7 @@
     /* ---------- app layout ---------- */
     .app{
       position:fixed; inset:0;
-      padding-top:58px;
+      padding-top: calc(var(--headerH) + 5px);
       display:flex;
       flex-direction:column;
     }
@@ -133,17 +136,17 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:16px;
+      padding:8px 12px calc(var(--lessonBarReserve) - 10px);
       position:relative;
     }
 
     .stageWrap{
-      width: var(--cardW);
+      width: min(var(--cardW), 100%);
       display:flex;
       flex-direction:column;
       align-items:stretch;
-      gap:8px;
-      transform: translateY(-50px);
+      gap:6px;
+      margin-inline:auto;
     }
 
     .stageBranchBar{
@@ -184,7 +187,7 @@
     }
 
     .stage{
-      width: var(--cardW);
+      width: min(var(--cardW), 100%);
       height: var(--cardH);
       border-radius: 22px;
       border:1px solid rgba(111,71,43,.16);
@@ -226,7 +229,7 @@
 
     .slotFrame{
       width: calc(100% - 24px);
-      max-height: calc(100% - 24px);
+      max-height: min(calc(100% - 24px), calc(min(var(--cardW), 100%) - 24px));
       aspect-ratio: var(--imageFrameRatio);
       border-radius: 16px;
       border:1px solid rgba(111,71,43,.18);
@@ -559,7 +562,7 @@
       border-top:1px solid var(--line);
       background: rgba(255,248,234,.9);
       backdrop-filter: blur(10px);
-      padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+      padding:8px 10px calc(8px + env(safe-area-inset-bottom));
     }
     .lessonRow{
       max-width:1100px;
