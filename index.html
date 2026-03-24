@@ -1845,6 +1845,7 @@
     let lessonItems = [];
     let lessonPages = [{ key: DEFAULT_PAGE_KEY, label: "メイン" }];
     let lessonLoadRequestId = 0;
+    let stageIndexVisibleCount = 0;
     let currentPageLabel = "メイン";
     let currentPageKey = DEFAULT_PAGE_KEY;
     let currentItem = null;
@@ -2499,7 +2500,12 @@
         stageIndexBar.innerHTML = "";
         return;
       }
-      stageIndexBar.innerHTML = lessonItems.map((it, i)=>{
+      const maxVisible = Math.min(lessonItems.length, Math.max(0, Number(stageIndexVisibleCount) || 0));
+      if(maxVisible <= 0){
+        stageIndexBar.innerHTML = "";
+        return;
+      }
+      stageIndexBar.innerHTML = lessonItems.slice(0, maxVisible).map((it, i)=>{
         const active = currentItem && currentItem.id === it.id;
         return `<button class="idxBtn ${active ? "active" : ""}" data-item-index="${i}" aria-label="画像${i+1}">${i+1}</button>`;
       }).join("");
@@ -2596,20 +2602,25 @@
       const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
       const startIndex = Math.max(0, Number(options.startIndex ?? 0) || 0);
       const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
+      const onItemLoaded = typeof options.onItemLoaded === "function" ? options.onItemLoaded : null;
 
       const scoped = targets.slice(startIndex);
       const eager = scoped.slice(0, eagerCount);
       const rest = scoped.slice(eagerCount);
 
-      for(const item of eager){
+      for(let i=0; i<eager.length; i++){
+        const item = eager[i];
         preloadItemImage(item);
+        onItemLoaded?.(startIndex + i, item);
       }
       if(!rest.length) return;
 
       scheduleIdle(async ()=>{
-        for(const item of rest){
+        for(let i=0; i<rest.length; i++){
+          const item = rest[i];
           if(!isStillValid()) return;
           await preloadItemImage(item);
+          onItemLoaded?.(startIndex + eager.length + i, item);
           await waitMs(24);
         }
       });
@@ -3073,6 +3084,7 @@
         lessonItems = arr;
         currentItem = null;
         currentIndex = -1;
+        stageIndexVisibleCount = 0;
         renderStageBranchBar();
         renderStageIndexBar();
 
@@ -3089,15 +3101,22 @@
           count: 3,
           isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
         });
-        await initialPreload.firstReady;
-        if(isStale()) return;
-        showOneItemInstant(first);
         await initialPreload.batchReady;
+        if(isStale()) return;
+        stageIndexVisibleCount = Math.min(3, lessonItems.length);
+        showOneItemInstant(first);
         if(isStale()) return;
         warmupLessonImagesStaged(lessonItems, {
           eagerCount: 0,
           startIndex: 3,
-          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
+          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey,
+          onItemLoaded: (absoluteIndex)=>{
+            if(isStale()) return;
+            const nextVisible = Math.max(stageIndexVisibleCount, absoluteIndex + 1);
+            if(nextVisible === stageIndexVisibleCount) return;
+            stageIndexVisibleCount = nextVisible;
+            renderStageIndexBar();
+          }
         });
       }catch(err){
         if(isStale()) return;
