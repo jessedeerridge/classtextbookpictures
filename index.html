@@ -54,7 +54,9 @@
       --normalShieldBg: rgba(255,255,255,.50);
       --normalShieldBgExpanded: rgba(255,255,255,.58);
       --imageOffsetY: 50px;
-      --imageFrameRatio: 11 / 13;
+      --imageFrameRatio: 1 / 1;
+      --headerH: 58px;
+      --topControlStart: 5px;
     }
 
     *{box-sizing:border-box}
@@ -131,22 +133,27 @@
     .viewer{
       flex:1;
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:center;
-      padding:16px;
+      padding: calc(var(--topControlStart) + 16px) 16px 16px;
       position:relative;
     }
 
     .stageWrap{
       width: var(--cardW);
+      position: relative;
       display:flex;
       flex-direction:column;
       align-items:stretch;
       gap:8px;
-      transform: translateY(-50px);
+      padding-top: 66px;
+      transform: none;
     }
 
     .stageBranchBar{
+      position:absolute;
+      left:0;
+      top:0;
       width:100%;
       min-height:30px;
       display:flex;
@@ -154,6 +161,7 @@
       gap:8px;
       justify-content:center;
       pointer-events:auto;
+      z-index:2;
     }
     .branchBtn{
       appearance:none;
@@ -226,7 +234,6 @@
 
     .slotFrame{
       width: calc(100% - 24px);
-      max-height: calc(100% - 24px);
       aspect-ratio: var(--imageFrameRatio);
       border-radius: 16px;
       border:1px solid rgba(111,71,43,.18);
@@ -500,6 +507,9 @@
     }
 
     .stageIndexBar{
+      position:absolute;
+      left:0;
+      top:38px;
       width:100%;
       min-height:24px;
       display:grid;
@@ -507,6 +517,7 @@
       gap:6px;
       justify-content:start;
       pointer-events:auto;
+      z-index:2;
     }
     .idxBtn{
       appearance:none;
@@ -555,11 +566,13 @@
     }
 
     .lessonBar{
-      position:fixed; left:0; right:0; bottom:0; z-index:40;
-      border-top:1px solid var(--line);
-      background: rgba(255,248,234,.9);
+      position:fixed; left:8px; right:8px; bottom:max(8px, env(safe-area-inset-bottom)); z-index:60;
+      border:1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,248,234,.94);
       backdrop-filter: blur(10px);
-      padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+      padding:10px 10px;
+      box-shadow: 0 10px 24px rgba(111,71,43,.18);
     }
     .lessonRow{
       max-width:1100px;
