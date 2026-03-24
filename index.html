@@ -2615,17 +2615,27 @@
       });
     }
 
-    async function preloadLessonFirstBatch(items, options = {}){
+    function preloadLessonFirstBatch(items, options = {}){
       const targets = Array.isArray(items) ? items.filter(Boolean) : [];
       const count = Math.max(0, Number(options.count ?? 3) || 3);
       const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
       const firstBatch = targets.slice(0, count);
-      if(!firstBatch.length) return;
+      if(!firstBatch.length){
+        return { firstReady: Promise.resolve(), batchReady: Promise.resolve() };
+      }
 
-      await Promise.all(firstBatch.map(async (item)=>{
+      const firstReady = (async ()=>{
+        const first = firstBatch[0];
+        if(!first || !isStillValid()) return;
+        await preloadItemImage(first);
+      })();
+
+      const batchReady = Promise.all(firstBatch.map(async (item)=>{
         if(!isStillValid()) return;
         await preloadItemImage(item);
       }));
+
+      return { firstReady, batchReady };
     }
 
     async function preloadItemImage(item){
@@ -3075,12 +3085,15 @@
 
         const first = lessonItems[0];
         if(isStale()) return;
-        await preloadLessonFirstBatch(lessonItems, {
+        const initialPreload = preloadLessonFirstBatch(lessonItems, {
           count: 3,
           isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
         });
+        await initialPreload.firstReady;
         if(isStale()) return;
         showOneItemInstant(first);
+        await initialPreload.batchReady;
+        if(isStale()) return;
         warmupLessonImagesStaged(lessonItems, {
           eagerCount: 0,
           startIndex: 3,
