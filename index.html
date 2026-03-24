@@ -586,6 +586,12 @@
       background: rgba(215,121,67,.24);
       box-shadow: 0 0 0 3px rgba(215,121,67,.12) inset;
     }
+    .lessonBtn.groupActive{
+      border-color: rgba(124, 58, 237, .62);
+      background: rgba(124, 58, 237, .22);
+      color: #3b1f67;
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, .16) inset;
+    }
 
     /* ---------- admin screen ---------- */
     .admin{
@@ -2061,7 +2067,7 @@
     function buildGroupButtons(){
       const activeGroupKey = currentGroupKey || "";
       return LESSON_GROUPS.map(g => `
-        <button class="lessonBtn ${g.key===activeGroupKey ? "active" : ""}" data-group="${escapeHtml(g.key)}">${escapeHtml(g.label)}</button>
+        <button class="lessonBtn ${g.key===activeGroupKey ? "active groupActive" : ""}" data-group="${escapeHtml(g.key)}">${escapeHtml(g.label)}</button>
       `).join("");
     }
 
@@ -2080,7 +2086,7 @@
       lessonRow.innerHTML = `
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;">
           ${selectedGroup
-            ? `<button class="lessonBtn active" data-group="${escapeHtml(selectedGroup.key)}" aria-label="選択中のクラス">${escapeHtml(selectedGroup.label)}</button>`
+            ? `<button class="lessonBtn active groupActive" data-group="${escapeHtml(selectedGroup.key)}" aria-label="選択中のクラス">${escapeHtml(selectedGroup.label)}</button>`
             : buildGroupButtons()}
           ${selectedGroup ? `<span style="width:1px;height:24px;background:rgba(111,71,43,.18);"></span>` : ""}
           ${lessonButtons}
