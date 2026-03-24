@@ -347,8 +347,52 @@
       text-align:center;
       z-index:2;
     }
-    .placeholder .t{font-weight:900}
-    .placeholder .s{font-size:12px;color:rgba(232,238,247,.55);line-height:1.6}
+    .placeholderBubble{
+      position: relative;
+      width:min(96%, 640px);
+      min-height:120px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#fff;
+      border:3px solid #000;
+      border-radius:999px;
+      padding:18px 32px;
+      color:#000;
+      box-shadow:none;
+    }
+    .placeholderBubble::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      transform:translateX(-50%);
+      bottom:-26px;
+      width:0;
+      height:0;
+      border-left:16px solid transparent;
+      border-right:16px solid transparent;
+      border-top:26px solid #000;
+    }
+    .placeholderBubble::before{
+      content:"";
+      position:absolute;
+      left:50%;
+      transform:translateX(-50%);
+      bottom:-22px;
+      width:0;
+      height:0;
+      border-left:13px solid transparent;
+      border-right:13px solid transparent;
+      border-top:22px solid #fff;
+      z-index:1;
+    }
+    .placeholder .t{
+      font-weight:900;
+      font-size:clamp(16px, 4.3vw, 30px);
+      line-height:1.25;
+      white-space:nowrap;
+    }
+    .placeholder .s{font-size:18px;color:#000;line-height:1.4}
 
     .loadingDots{
       width:54px;
@@ -1242,8 +1286,10 @@
               <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span>
               <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
             </div>
-            <div class="t">課を選択してください</div>
-            <div class="s">下の「課」ボタンで切り替え。<br>横スワイプで高速ループ。<br>画像カードは長押し中だけ会話。<br>スペシャルカードは常時会話表示。<br>連結カードは画像が横並び表示。</div>
+            <div class="placeholderBubble">
+              <div class="t">クラス（Ⅰ～Ⅳ）を選んだください。</div>
+              <div class="s"></div>
+            </div>
           </div>
 
           <div class="firstLine" id="firstLine">
@@ -2038,7 +2084,7 @@
       currentItem = null;
       currentIndex = -1;
       lessonItems = [];
-      renderStageEmpty("課を選択してください", "このクラスで使う課を下から選べます。", false);
+      renderStageEmpty("課（L）を選んだください。", "", false);
       try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
     }
 
@@ -2336,6 +2382,8 @@
       const isLoading = !!showLoading;
       placeholder.classList.remove("hidden");
       if(loadingDots) loadingDots.classList.toggle("show", isLoading);
+      const bubble = placeholder.querySelector(".placeholderBubble");
+      if(bubble) bubble.classList.toggle("hidden", isLoading);
       placeholder.querySelector(".t").textContent = isLoading ? "" : (msg || "");
       placeholder.querySelector(".s").textContent = isLoading ? "" : (subMsg || "");
 
@@ -4136,7 +4184,7 @@
 
           if(!isAdminSignedIn()){
             if(currentLessonKey) loadLessonItemsForViewer(currentGroupKey, currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY);
-            else renderStageEmpty("", "");
+            else renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
             return;
           }
           const adminGroupKey = adminGroup.value || currentGroupKey || LESSON_GROUPS[0]?.key || "";
@@ -4147,16 +4195,12 @@
           }
         });
 
-        const lastLesson = loadLastLesson();
-        currentLessonKey = lastLesson?.lessonKey || "";
-        currentGroupKey = lastLesson?.groupKey || "";
-        currentPageKey = lastLesson?.pageKey || DEFAULT_PAGE_KEY;
+        try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
+        currentLessonKey = "";
+        currentGroupKey = "";
+        currentPageKey = DEFAULT_PAGE_KEY;
         await buildLessonUI();
-        if(currentLessonKey){
-          loadLessonItemsForViewer(currentGroupKey, currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY)
-        }else{
-          renderStageEmpty("課を追加してください", "管理画面でクラスごとに課と分岐を作成できます。", false);
-        }
+        renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
 
       }catch(err){
         renderStageEmpty("Firebase初期化エラー");
@@ -4250,7 +4294,7 @@
         currentItem = null;
         currentIndex = -1;
         lessonItems = [];
-        renderStageEmpty("", "");
+        renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
         try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
         return;
       }
