@@ -23,7 +23,7 @@
       --radius:18px;
 
       --cardW: min(86vw, 440px);
-      --cardH: min(62vh, 520px);
+      --cardH: min(56vh, 460px);
 
       --shuffleTotalMs: 420;
       --shuffleSteps: 10;
@@ -54,6 +54,7 @@
       --normalShieldBg: rgba(255,255,255,.50);
       --normalShieldBgExpanded: rgba(255,255,255,.58);
       --imageOffsetY: 50px;
+      --imageFrameRatio: 11 / 13;
     }
 
     *{box-sizing:border-box}
@@ -660,7 +661,7 @@
     .card.dropHintBottom{ box-shadow: inset 0 -4px 0 rgba(215,121,67,.85); }
 
     .thumb{
-      aspect-ratio: 4 / 3;
+      aspect-ratio: var(--imageFrameRatio);
       background: rgba(255,255,255,.38);
       border-bottom:1px solid var(--line);
       display:flex;align-items:center;justify-content:center;
@@ -962,7 +963,7 @@
     }
 
     .qThumb{
-      aspect-ratio: 4/3;
+      aspect-ratio: var(--imageFrameRatio);
       background: rgba(255,255,255,.38);
       display:flex; align-items:center; justify-content:center;
       overflow:hidden;
@@ -1040,7 +1041,7 @@
     .imgCanvas{
       position:relative;
       width:100%;
-      aspect-ratio: 4 / 3;
+      aspect-ratio: var(--imageFrameRatio);
       background: rgba(0,0,0,.24);
       touch-action:none;
       user-select:none;
@@ -1225,7 +1226,7 @@
     .talkCanvas{
       position:relative;
       width:100%;
-      aspect-ratio: 4 / 3;
+      aspect-ratio: var(--imageFrameRatio);
       background: rgba(0,0,0,.24);
       user-select:none;
       overflow:hidden;
