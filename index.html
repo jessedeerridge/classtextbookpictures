@@ -23,7 +23,7 @@
       --radius:18px;
 
       --cardW: min(86vw, 440px);
-      --cardH: min(68vh, 560px);
+      --cardH: min(62vh, 520px);
 
       --shuffleTotalMs: 420;
       --shuffleSteps: 10;
@@ -4635,6 +4635,8 @@
     bindModalHoldToImageOnly(talkCanvas, "talkCanvas");
     bindModalHoldToImageOnly(imgCanvas, "imgCanvas");
 
+    // 初回ロード中でもクラス選択バーを先に表示
+    renderLessonBar();
     window.addEventListener("load", initFirebase);
 
     /*
