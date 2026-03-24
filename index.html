@@ -1840,6 +1840,8 @@
     let currentLessonKey = "";
     let currentGroupKey = "";
     let groupLessons = [];
+    const lessonDefsCache = new Map();
+    let isLessonsLoading = false;
     let lessonItems = [];
     let lessonPages = [{ key: DEFAULT_PAGE_KEY, label: "メイン" }];
     let currentPageLabel = "メイン";
@@ -2053,6 +2055,7 @@
 
       adminGroup.value = group.key;
       groupLessons = await loadLessonDefsForGroup(group.key);
+      lessonDefsCache.set(group.key, [...groupLessons]);
 
       if(!groupLessons.length){
         adminLesson.innerHTML = "";
@@ -2075,6 +2078,9 @@
 
     function buildLessonButtonsForGroup(groupKey){
       if(!groupKey || groupKey !== currentGroupKey) return "";
+      if(isLessonsLoading && !groupLessons.length){
+        return `<button class="lessonBtn" disabled>課を読み込み中…</button>`;
+      }
       return groupLessons.map(lesson => {
         const active = lesson.key === currentLessonKey;
         return `<button class="lessonBtn ${active ? "active" : ""}" data-lesson="${escapeHtml(lesson.key)}" data-lesson-group="${escapeHtml(groupKey)}">${escapeHtml(lesson.label)}</button>`;
@@ -2102,9 +2108,15 @@
       if(!group) return;
       currentGroupKey = group.key;
       currentLessonKey = "";
-      groupLessons = [];
+      groupLessons = lessonDefsCache.get(group.key) ? [...lessonDefsCache.get(group.key)] : [];
+      isLessonsLoading = true;
       renderLessonBar();
-      groupLessons = await loadLessonDefsForGroup(group.key);
+      try{
+        groupLessons = await loadLessonDefsForGroup(group.key);
+        lessonDefsCache.set(group.key, [...groupLessons]);
+      }finally{
+        isLessonsLoading = false;
+      }
       renderLessonBar();
       hideTalk();
       currentItem = null;
