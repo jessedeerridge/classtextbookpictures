@@ -405,7 +405,7 @@
     }
     .placeholder .t{
       font-weight:900;
-      font-size:clamp(16px, 4.3vw, 30px);
+      font-size:clamp(14px, 3.6vw, 24px);
       line-height:1.25;
       white-space:nowrap;
     }
@@ -1308,7 +1308,7 @@
               <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
             </div>
             <div class="placeholderBubble">
-              <div class="t">クラス（Ⅰ～Ⅳ）を選んだください。</div>
+              <div class="t">クラスを選択してください</div>
               <div class="s"></div>
             </div>
           </div>
@@ -4202,7 +4202,7 @@
 
           if(!isAdminSignedIn()){
             if(currentLessonKey) loadLessonItemsForViewer(currentGroupKey, currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY);
-            else renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
+            else renderStageEmpty("クラスを選択してください", "", false);
             return;
           }
           const adminGroupKey = adminGroup.value || currentGroupKey || LESSON_GROUPS[0]?.key || "";
@@ -4218,7 +4218,7 @@
         currentGroupKey = "";
         currentPageKey = DEFAULT_PAGE_KEY;
         await buildLessonUI();
-        renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
+        renderStageEmpty("クラスを選択してください", "", false);
 
       }catch(err){
         renderStageEmpty("Firebase初期化エラー");
@@ -4312,7 +4312,7 @@
         currentItem = null;
         currentIndex = -1;
         lessonItems = [];
-        renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
+        renderStageEmpty("クラスを選択してください", "", false);
         try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
         return;
       }
