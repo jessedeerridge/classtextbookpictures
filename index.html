@@ -2594,10 +2594,12 @@
     function warmupLessonImagesStaged(items, options = {}){
       const targets = Array.isArray(items) ? items.filter(Boolean) : [];
       const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
+      const startIndex = Math.max(0, Number(options.startIndex ?? 0) || 0);
       const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
 
-      const eager = targets.slice(0, eagerCount);
-      const rest = targets.slice(eagerCount);
+      const scoped = targets.slice(startIndex);
+      const eager = scoped.slice(0, eagerCount);
+      const rest = scoped.slice(eagerCount);
 
       for(const item of eager){
         preloadItemImage(item);
@@ -2611,6 +2613,19 @@
           await waitMs(24);
         }
       });
+    }
+
+    async function preloadLessonFirstBatch(items, options = {}){
+      const targets = Array.isArray(items) ? items.filter(Boolean) : [];
+      const count = Math.max(0, Number(options.count ?? 3) || 3);
+      const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
+      const firstBatch = targets.slice(0, count);
+      if(!firstBatch.length) return;
+
+      await Promise.all(firstBatch.map(async (item)=>{
+        if(!isStillValid()) return;
+        await preloadItemImage(item);
+      }));
     }
 
     async function preloadItemImage(item){
@@ -3060,9 +3075,15 @@
 
         const first = lessonItems[0];
         if(isStale()) return;
+        await preloadLessonFirstBatch(lessonItems, {
+          count: 3,
+          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
+        });
+        if(isStale()) return;
         showOneItemInstant(first);
         warmupLessonImagesStaged(lessonItems, {
-          eagerCount: 3,
+          eagerCount: 0,
+          startIndex: 3,
           isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
         });
       }catch(err){
