@@ -2591,7 +2591,7 @@
       setTimeout(task, 60);
     }
 
-    function warmupLessonImagesStaged(items, options = {}){
+    async function warmupLessonImagesStaged(items, options = {}){
       const targets = Array.isArray(items) ? items.filter(Boolean) : [];
       const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
       const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
@@ -2600,7 +2600,8 @@
       const rest = targets.slice(eagerCount);
 
       for(const item of eager){
-        preloadItemImage(item);
+        if(!isStillValid()) return;
+        await preloadItemImage(item);
       }
       if(!rest.length) return;
 
@@ -3061,7 +3062,7 @@
         const first = lessonItems[0];
         if(isStale()) return;
         showOneItemInstant(first);
-        warmupLessonImagesStaged(lessonItems, {
+        void warmupLessonImagesStaged(lessonItems, {
           eagerCount: 3,
           isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
         });
