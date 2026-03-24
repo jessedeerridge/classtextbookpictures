@@ -2994,6 +2994,66 @@
       syncPageLabelInput();
     }
 
+    function normalizeLessonItemsFromSnapshot(snap){
+      const arr = [];
+      snap.forEach(child=>{
+        const v = child.val() || {};
+        const type = String(v.type || (v.dataUrl ? "image" : "image"));
+
+        if(type === "special"){
+          arr.push({
+            id: child.key,
+            type,
+            dataUrl: "",
+            images: [],
+            talk: v.talk || "",
+            overlays: [],
+            createdAt: Number(v.createdAt || 0) || 0,
+            order: Number(v.order || v.createdAt || 0) || 0,
+            createdBy: v.createdBy || "",
+            createdByEmail: v.createdByEmail || ""
+          });
+          return;
+        }
+
+        if(type === "combo"){
+          const images = Array.isArray(v.images) ? v.images : [];
+          if(images.length){
+            arr.push({
+              id: child.key,
+              type,
+              dataUrl: "",
+              images,
+              talk: v.talk || "",
+              overlays: [],
+              createdAt: Number(v.createdAt || 0) || 0,
+              order: Number(v.order || v.createdAt || 0) || 0,
+              createdBy: v.createdBy || "",
+              createdByEmail: v.createdByEmail || ""
+            });
+          }
+          return;
+        }
+
+        if(v.dataUrl){
+          arr.push({
+            id: child.key,
+            type: "image",
+            dataUrl: v.dataUrl || "",
+            images: [],
+            talk: v.talk || "",
+            overlays: v.overlays || [],
+            createdAt: Number(v.createdAt || 0) || 0,
+            order: Number(v.order || v.createdAt || 0) || 0,
+            createdBy: v.createdBy || "",
+            createdByEmail: v.createdByEmail || ""
+          });
+        }
+      });
+      arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+      return arr;
+    }
+
     async function loadLessonItemsForViewer(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
       const requestId = ++lessonLoadRequestId;
       const isStale = ()=> requestId !== lessonLoadRequestId;
@@ -3006,71 +3066,15 @@
         if(isStale()) return;
         currentPageKey = lessonPages.some(page => page.key === pageKey) ? pageKey : DEFAULT_PAGE_KEY;
         currentPageLabel = (lessonPages.find(page => page.key === currentPageKey)?.label) || "";
+        const activePageKey = currentPageKey;
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
         const ref = db.ref(pageItemsPath(currentGroupKey, lessonKey, currentPageKey));
-        const snap = await ref.get();
+        const firstSnap = await ref.orderByChild("order").limitToFirst(3).get();
         if(isStale()) return;
-        const arr = [];
-        snap.forEach(child=>{
-          const v = child.val() || {};
-          const type = String(v.type || (v.dataUrl ? "image" : "image"));
-
-          if(type === "special"){
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images: [],
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(type === "combo"){
-            const images = Array.isArray(v.images) ? v.images : [];
-            if(images.length){
-              arr.push({
-                id: child.key,
-                type,
-                dataUrl: "",
-                images,
-                talk: v.talk || "",
-                overlays: [],
-                createdAt: Number(v.createdAt || 0) || 0,
-                order: Number(v.order || v.createdAt || 0) || 0,
-                createdBy: v.createdBy || "",
-                createdByEmail: v.createdByEmail || ""
-              });
-            }
-            return;
-          }
-
-          if(v.dataUrl){
-            arr.push({
-              id: child.key,
-              type: "image",
-              dataUrl: v.dataUrl || "",
-              images: [],
-              talk: v.talk || "",
-              overlays: v.overlays || [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-          }
-        });
-
-        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
-        if(isStale()) return;
-        lessonItems = arr;
+        const firstArr = normalizeLessonItemsFromSnapshot(firstSnap);
+        lessonItems = firstArr;
         currentItem = null;
         currentIndex = -1;
         renderStageBranchBar();
@@ -3087,18 +3091,27 @@
         if(isStale()) return;
         const initialPreload = preloadLessonFirstBatch(lessonItems, {
           count: 3,
-          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
+          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === activePageKey
         });
-        await initialPreload.firstReady;
-        if(isStale()) return;
-        showOneItemInstant(first);
         await initialPreload.batchReady;
         if(isStale()) return;
-        warmupLessonImagesStaged(lessonItems, {
-          eagerCount: 0,
-          startIndex: 3,
-          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
-        });
+        showOneItemInstant(first);
+
+        scheduleIdle(async ()=>{
+          if(isStale()) return;
+          const fullSnap = await ref.get();
+          if(isStale()) return;
+          const allArr = normalizeLessonItemsFromSnapshot(fullSnap);
+          if(isStale()) return;
+          lessonItems = allArr;
+          currentIndex = lessonItems.findIndex(x => currentItem && x.id === currentItem.id);
+          renderStageIndexBar();
+          warmupLessonImagesStaged(lessonItems, {
+            eagerCount: 0,
+            startIndex: 3,
+            isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === activePageKey
+          });
+        }, 120);
       }catch(err){
         if(isStale()) return;
         renderStageEmpty("読み込みエラー");
