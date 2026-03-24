@@ -133,35 +133,35 @@
     .viewer{
       flex:1;
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:center;
-      padding:16px;
+      padding: calc(var(--topControlStart) + 16px) 16px 16px;
       position:relative;
     }
 
     .stageWrap{
       width: var(--cardW);
+      position: relative;
       display:flex;
       flex-direction:column;
       align-items:stretch;
       gap:8px;
       padding-top: 66px;
-      transform: translateY(-50px);
+      transform: none;
     }
 
     .stageBranchBar{
-      position:fixed;
-      left:50%;
-      top: calc(var(--headerH) + var(--topControlStart));
-      transform: translateX(-50%);
-      width: var(--cardW);
+      position:absolute;
+      left:0;
+      top:0;
+      width:100%;
       min-height:30px;
       display:flex;
       flex-wrap:wrap;
       gap:8px;
       justify-content:center;
       pointer-events:auto;
-      z-index:46;
+      z-index:2;
     }
     .branchBtn{
       appearance:none;
@@ -507,18 +507,17 @@
     }
 
     .stageIndexBar{
-      position:fixed;
-      left:50%;
-      top: calc(var(--headerH) + var(--topControlStart) + 38px);
-      transform: translateX(-50%);
-      width: var(--cardW);
+      position:absolute;
+      left:0;
+      top:38px;
+      width:100%;
       min-height:24px;
       display:grid;
       grid-template-columns: repeat(10, minmax(0, 1fr));
       gap:6px;
       justify-content:start;
       pointer-events:auto;
-      z-index:46;
+      z-index:2;
     }
     .idxBtn{
       appearance:none;
