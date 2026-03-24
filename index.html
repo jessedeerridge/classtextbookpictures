@@ -2579,6 +2579,40 @@
       }
     }
 
+    function waitMs(ms){
+      return new Promise((resolve)=> setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+    }
+
+    function scheduleIdle(task, timeoutMs = 240){
+      if(typeof window.requestIdleCallback === "function"){
+        window.requestIdleCallback(()=> task(), { timeout: timeoutMs });
+        return;
+      }
+      setTimeout(task, 60);
+    }
+
+    function warmupLessonImagesStaged(items, options = {}){
+      const targets = Array.isArray(items) ? items.filter(Boolean) : [];
+      const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
+      const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
+
+      const eager = targets.slice(0, eagerCount);
+      const rest = targets.slice(eagerCount);
+
+      for(const item of eager){
+        preloadItemImage(item);
+      }
+      if(!rest.length) return;
+
+      scheduleIdle(async ()=>{
+        for(const item of rest){
+          if(!isStillValid()) return;
+          await preloadItemImage(item);
+          await waitMs(24);
+        }
+      });
+    }
+
     async function preloadItemImage(item){
       try{
         if(!item) return;
@@ -3024,10 +3058,13 @@
           return;
         }
 
-        const first = lessonItems[pickRandomIndexAvoidSame(-1)];
+        const first = lessonItems[0];
         if(isStale()) return;
         showOneItemInstant(first);
-        warmupLessonImages([first, ...lessonItems.filter(it => it.id !== first.id)], 4);
+        warmupLessonImagesStaged(lessonItems, {
+          eagerCount: 3,
+          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
+        });
       }catch(err){
         if(isStale()) return;
         renderStageEmpty("読み込みエラー");
