@@ -1844,6 +1844,7 @@
     let isLessonsLoading = false;
     let lessonItems = [];
     let lessonPages = [{ key: DEFAULT_PAGE_KEY, label: "メイン" }];
+    let lessonLoadRequestId = 0;
     let currentPageLabel = "メイン";
     let currentPageKey = DEFAULT_PAGE_KEY;
     let currentItem = null;
@@ -2106,6 +2107,7 @@
     async function setGroup(groupKey){
       const group = getGroupByKey(groupKey);
       if(!group) return;
+      lessonLoadRequestId++;
       currentGroupKey = group.key;
       currentLessonKey = "";
       groupLessons = lessonDefsCache.get(group.key) ? [...lessonDefsCache.get(group.key)] : [];
@@ -2157,6 +2159,7 @@
       lessonItems = [];
       renderStageEmpty("", "", true);
 
+      lessonLoadRequestId++;
       shuffleToken++;
 
       if(!silent) saveLastLesson(currentGroupKey, key, DEFAULT_PAGE_KEY);
@@ -2933,12 +2936,15 @@
     }
 
     async function loadLessonItemsForViewer(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
+      const requestId = ++lessonLoadRequestId;
+      const isStale = ()=> requestId !== lessonLoadRequestId;
       try{
         if(!db) return;
 
         currentGroupKey = groupKey || currentGroupKey;
         currentLessonKey = lessonKey || "";
         lessonPages = await loadLessonPages(currentGroupKey, lessonKey);
+        if(isStale()) return;
         currentPageKey = lessonPages.some(page => page.key === pageKey) ? pageKey : DEFAULT_PAGE_KEY;
         currentPageLabel = (lessonPages.find(page => page.key === currentPageKey)?.label) || "";
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
@@ -2946,6 +2952,7 @@
 
         const ref = db.ref(pageItemsPath(currentGroupKey, lessonKey, currentPageKey));
         const snap = await ref.get();
+        if(isStale()) return;
         const arr = [];
         snap.forEach(child=>{
           const v = child.val() || {};
@@ -3003,6 +3010,7 @@
         });
 
         arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        if(isStale()) return;
         lessonItems = arr;
         currentItem = null;
         currentIndex = -1;
@@ -3017,9 +3025,11 @@
         }
 
         const first = lessonItems[pickRandomIndexAvoidSame(-1)];
+        if(isStale()) return;
         showOneItemInstant(first);
         warmupLessonImages([first, ...lessonItems.filter(it => it.id !== first.id)], 4);
       }catch(err){
+        if(isStale()) return;
         renderStageEmpty("読み込みエラー");
         placeholder.querySelector(".s").textContent = String(err?.message || err || "");
       }
@@ -4320,6 +4330,7 @@
 
       const resetBtn = e.target.closest("[data-reset]");
       if(resetBtn){
+        lessonLoadRequestId++;
         currentGroupKey = "";
         currentLessonKey = "";
         renderLessonBar();
