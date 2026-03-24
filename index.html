@@ -581,6 +581,10 @@
       user-select:none;
       -webkit-tap-highlight-color:transparent;
     }
+    .lessonBtn:active{
+      border-color: rgba(215,121,67,.46);
+      background: rgba(215,121,67,.18);
+    }
     .lessonBtn.active{
       border-color: rgba(215,121,67,.52);
       background: rgba(215,121,67,.24);
@@ -2094,6 +2098,8 @@
       if(!group) return;
       currentGroupKey = group.key;
       currentLessonKey = "";
+      groupLessons = [];
+      renderLessonBar();
       groupLessons = await loadLessonDefsForGroup(group.key);
       renderLessonBar();
       hideTalk();
