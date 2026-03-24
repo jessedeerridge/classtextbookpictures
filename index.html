@@ -4195,16 +4195,12 @@
           }
         });
 
-        const lastLesson = loadLastLesson();
-        currentLessonKey = lastLesson?.lessonKey || "";
-        currentGroupKey = lastLesson?.groupKey || "";
-        currentPageKey = lastLesson?.pageKey || DEFAULT_PAGE_KEY;
+        try{ localStorage.removeItem("lessonCards:lastLesson"); }catch(_){ }
+        currentLessonKey = "";
+        currentGroupKey = "";
+        currentPageKey = DEFAULT_PAGE_KEY;
         await buildLessonUI();
-        if(currentLessonKey){
-          loadLessonItemsForViewer(currentGroupKey, currentLessonKey, currentPageKey || DEFAULT_PAGE_KEY)
-        }else{
-          renderStageEmpty("課を追加してください", "管理画面でクラスごとに課と分岐を作成できます。", false);
-        }
+        renderStageEmpty("クラス（Ⅰ～Ⅳ）を選んだください。", "", false);
 
       }catch(err){
         renderStageEmpty("Firebase初期化エラー");
