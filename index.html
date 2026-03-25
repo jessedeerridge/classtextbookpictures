@@ -363,8 +363,9 @@
       overflow:hidden;
       box-sizing:border-box;
       padding:6px 8px;
-      white-space:pre-wrap;
-      word-break:break-word;
+      white-space:pre;
+      word-break:normal;
+      overflow-wrap:normal;
       color:#fff;
       text-shadow: 0 2px 8px rgba(0,0,0,.55);
       font-weight:900;
@@ -1091,8 +1092,10 @@
       overflow:hidden;
     }
     .imgCanvas img{
-      position:absolute; inset:0;
-      width:100%; height:100%;
+      position:absolute;
+      left:12px; top:12px;
+      width:calc(100% - 24px);
+      height:calc(100% - 24px);
       object-fit: contain;
       object-position:center;
       pointer-events:none;
@@ -1103,15 +1106,20 @@
 
     /* ✅ 連結カードのモーダルプレビュー用（画像が正しく出ない問題を修正） */
     .comboPreview{
-      position:absolute; inset:0;
+      position:absolute;
+      left:12px; top:12px;
+      width:calc(100% - 24px);
+      height:calc(100% - 24px);
       display:none;
       background: rgba(0,0,0,.24);
     }
     .comboPreview.show{ display:block; }
 
     .noImgCard{
-      position:absolute; inset:0;
-      width:100%; height:100%;
+      position:absolute;
+      left:12px; top:12px;
+      width:calc(100% - 24px);
+      height:calc(100% - 24px);
       background:#fff;
       color:#0b1220;
       display:none;
@@ -1135,7 +1143,13 @@
       font-size: 14px;
     }
 
-    .imgCanvas .editOverlayLayer{ position:absolute; inset:0; z-index:2; }
+    .imgCanvas .editOverlayLayer{
+      position:absolute;
+      left:12px; top:12px;
+      width:calc(100% - 24px);
+      height:calc(100% - 24px);
+      z-index:2;
+    }
 
     .canvasShield{
       position:absolute;
@@ -1181,8 +1195,9 @@
       color:#000;
       font-weight:400;
       text-shadow: none;
-      white-space:pre-wrap;
-      word-break:break-word;
+      white-space:pre;
+      word-break:normal;
+      overflow-wrap:normal;
       line-height:1.15;
       user-select:text;
       cursor:text;
@@ -1276,8 +1291,10 @@
       touch-action: pan-y;
     }
     .talkCanvas img{
-      position:absolute; inset:0;
-      width:100%; height:100%;
+      position:absolute;
+      left:12px; top:12px;
+      width:calc(100% - 24px);
+      height:calc(100% - 24px);
       object-fit: contain;
       object-position:center;
       pointer-events:none;
@@ -1286,7 +1303,10 @@
       background: rgba(255,255,255,.34);
     }
     .talkCanvas .talkOverlayLayer{
-      position:absolute; inset:0;
+      position:absolute;
+      left:12px; top:12px;
+      width:calc(100% - 24px);
+      height:calc(100% - 24px);
       z-index:2;
       pointer-events:none;
     }
@@ -4029,11 +4049,11 @@
       if(!box) return;
       const o = editOverlays.find(x=>x.id===id);
       if(!o) return;
-      o.text = box.textContent ?? "";
+      o.text = (box.innerText ?? box.textContent ?? "").replace(/\r\n?/g, "\n");
     }
 
     function startDrag(e, type, id){
-      const canvasRect = imgCanvas.getBoundingClientRect();
+      const canvasRect = (editOverlayLayer?.getBoundingClientRect?.()) || imgCanvas.getBoundingClientRect();
       const o = editOverlays.find(x=>x.id===id);
       if(!o) return;
 
@@ -4852,6 +4872,27 @@
         const a = btn.getAttribute("data-align") || "left";
         applySelectedStyle({ align: a });
       });
+    });
+
+    editOverlayLayer.addEventListener("keydown", (e)=>{
+      const txt = e.target.closest?.(".txt");
+      if(!txt) return;
+      if(e.key !== "Enter") return;
+      e.preventDefault();
+      try{
+        document.execCommand("insertText", false, "\n");
+      }catch(_){
+        const sel = window.getSelection();
+        if(!sel || !sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const node = document.createTextNode("\n");
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.setEndAfter(node);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
     });
 
     editOverlayLayer.addEventListener("input", (e)=>{
