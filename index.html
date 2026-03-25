@@ -2479,7 +2479,6 @@
         const parts = imgs.length ? imgs : (item.dataUrl ? [item.dataUrl] : []);
         const n = Math.max(1, parts.length || 1);
         slotEl.innerHTML = `
-          <div class="comboBadge">COMBO ${parts.length}</div>
           <div class="slotFrame">
             <div class="comboStrip" aria-label="combo-card" style="--comboN:${n}">
               ${parts.map(u=>`
