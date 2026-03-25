@@ -2228,9 +2228,21 @@
     function firstLineFromTalk(raw){
       const plain = stripMarkers(String(raw ?? "")).replace(/\r\n/g,"\n");
       const lines = plain.split("\n");
-      const first = String(lines[0] ?? "").trim();
-      if(!first) return "";
-      return first;
+      const first = lines.find(line => String(line ?? "").trim());
+      return String(first ?? "").trim();
+    }
+
+    function talkBodyFromSecondLine(raw){
+      const normalized = String(raw ?? "").replace(/\r\n/g,"\n");
+      const lines = normalized.split("\n");
+      const firstNonEmptyIndex = lines.findIndex(line => stripMarkers(line).trim());
+      if(firstNonEmptyIndex < 0) return "";
+
+      const rest = lines.slice(firstNonEmptyIndex + 1);
+      while(rest.length && !stripMarkers(rest[0]).trim()){
+        rest.shift();
+      }
+      return rest.join("\n");
     }
 
     function isSpecialItem(item){
@@ -2825,10 +2837,16 @@
       if(isSpecialItem(currentItem)) return;
 
       const rawTalk = String(currentItem.talk || "");
-      const raw = stripMarkers(rawTalk).trim() ? rawTalk : "（未登録）";
-      firstLine.classList.add("show");
-      firstLineBox.classList.add("expanded");
-      firstLineText.innerHTML = toTalkHtml(raw);
+      const body = talkBodyFromSecondLine(rawTalk);
+      if(stripMarkers(body).trim()){
+        firstLine.classList.add("show");
+        firstLineBox.classList.add("expanded");
+        firstLineText.innerHTML = toTalkHtml(body);
+      }else{
+        firstLine.classList.remove("show");
+        firstLineBox.classList.remove("expanded");
+        firstLineText.textContent = "";
+      }
     }
 
     function hideTalk(){
