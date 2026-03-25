@@ -4069,7 +4069,20 @@
         const id = ovEl.getAttribute("data-ov");
         setSelectedOverlay(id, { rerender:false });
 
-        if(isTxt) return;
+        if(isTxt){
+          const r = ovEl.getBoundingClientRect();
+          const edge = 10;
+          const nearFrame =
+            (e.clientX - r.left) <= edge ||
+            (r.right - e.clientX) <= edge ||
+            (e.clientY - r.top) <= edge ||
+            (r.bottom - e.clientY) <= edge;
+          if(nearFrame){
+            startDrag(e, "move", id);
+            e.preventDefault();
+          }
+          return;
+        }
 
         startDrag(e, "move", id);
         e.preventDefault();
