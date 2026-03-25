@@ -2228,17 +2228,15 @@
     function firstLineFromTalk(raw){
       const plain = stripMarkers(String(raw ?? "")).replace(/\r\n/g,"\n");
       const lines = plain.split("\n");
-      const first = lines.find(line => String(line ?? "").trim());
-      return String(first ?? "").trim();
+      const first = String(lines[0] ?? "").trim();
+      if(!first) return "";
+      return first;
     }
 
     function talkBodyFromSecondLine(raw){
       const normalized = String(raw ?? "").replace(/\r\n/g,"\n");
       const lines = normalized.split("\n");
-      const firstNonEmptyIndex = lines.findIndex(line => stripMarkers(line).trim());
-      if(firstNonEmptyIndex < 0) return "";
-
-      const rest = lines.slice(firstNonEmptyIndex + 1);
+      const rest = lines.slice(1);
       while(rest.length && !stripMarkers(rest[0]).trim()){
         rest.shift();
       }
