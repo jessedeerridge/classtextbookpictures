@@ -1331,7 +1331,7 @@
       <div class="bar">
         <div class="brand"><span class="dot"></span> Lesson Cards</div>
         <div class="auth">
-          <button class="btn primary" id="btnLogin">ログイン</button>
+          <button class="btn primary" id="btnLogin">追加</button>
           <div class="pill hidden" id="userPill">
             <div class="email" id="userEmail">-</div>
             <button class="btn small" id="btnLogout">ログアウト</button>
@@ -1521,7 +1521,7 @@
       <div class="modalHead">
         <div class="tabs">
           <div class="tab active" id="tabLogin">ログイン</div>
-          <div class="tab" id="tabSignup">新規登録</div>
+          <div class="tab hidden" id="tabSignup">新規登録</div>
         </div>
         <button class="closeX" id="btnCloseAuth" aria-label="close">×</button>
       </div>
@@ -1545,7 +1545,7 @@
         </div>
 
         <div class="hr"></div>
-        <div class="toolHint" id="authNote">新規登録が必要なら「新規登録」タブへ。</div>
+        <div class="toolHint" id="authNote">ログインして追加してください。</div>
       </div>
     </div>
   </div>
@@ -1979,7 +1979,7 @@
       tabSignup.classList.toggle("active", mode==="signup");
       btnAuthDo.textContent = (mode==="login") ? "ログイン" : "新規登録";
       authNote.textContent = (mode==="login")
-        ? "新規登録が必要なら「新規登録」タブへ。"
+        ? "ログインして追加してください。"
         : "すでにアカウントがあるなら「ログイン」タブへ。";
       authErr.classList.remove("show");
       authErr.textContent = "";
