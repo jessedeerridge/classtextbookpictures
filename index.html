@@ -56,6 +56,9 @@
       --normalShieldBg: rgba(255,255,255,.50);
       --normalShieldBgExpanded: rgba(255,255,255,.58);
       --imageFrameRatio: 1 / 1;
+      --overlayPadY: 6px;
+      --overlayPadX: 8px;
+      --overlayLineHeight: 1.2;
     }
 
     *{box-sizing:border-box}
@@ -360,16 +363,16 @@
     }
     .ovItem{
       position:absolute;
-      overflow:hidden;
+      overflow:visible;
       box-sizing:border-box;
-      padding:6px 8px;
+      padding:var(--overlayPadY) var(--overlayPadX);
       white-space:pre;
       word-break:normal;
       overflow-wrap:normal;
       color:#fff;
       text-shadow: 0 2px 8px rgba(0,0,0,.55);
       font-weight:900;
-      line-height:1.15;
+      line-height:var(--overlayLineHeight);
       pointer-events:none;
       user-select:none;
     }
@@ -1091,6 +1094,10 @@
       user-select:none;
       overflow:hidden;
     }
+    .imgCanvas.movingOverlay,
+    .imgCanvas.movingOverlay *{
+      cursor: grabbing !important;
+    }
     .imgCanvas img{
       position:absolute;
       left:12px; top:12px;
@@ -1181,24 +1188,29 @@
       outline-offset: -1px;
       background: rgba(0,0,0,.10);
       border-radius:10px;
-      padding:0;
+      padding:6px;
       min-width: 48px;
       min-height: 26px;
-      cursor: move;
-      overflow:hidden;
+      cursor: grab;
+      overflow: visible;
+    }
+    .editOv.dragging{
+      cursor: grabbing;
     }
     .editOv .txt{
+      position:absolute;
+      inset:6px;
       outline:none;
-      width:100%;
-      height:100%;
-      padding:6px 8px;
+      width:auto;
+      height:auto;
+      padding:var(--overlayPadY) var(--overlayPadX);
       color:#000;
       font-weight:400;
       text-shadow: none;
       white-space:pre;
       word-break:normal;
       overflow-wrap:normal;
-      line-height:1.15;
+      line-height:var(--overlayLineHeight);
       user-select:text;
       cursor:text;
     }
@@ -2379,7 +2391,7 @@
       return Math.max(min, Math.min(max, n));
     }
     function fontPxFromRatio(ratio, containerWidth){
-      return clampNum(Math.round((Number(ratio) || (16/440)) * Math.max(1, Number(containerWidth) || 440)), 10, 120, 16);
+      return clampNum((Number(ratio) || (16/440)) * Math.max(1, Number(containerWidth) || 440), 10, 120, 16);
     }
     function syncOverlayFontsIn(root){
       const host = root || document;
@@ -2402,7 +2414,7 @@
         return `<div class="ovItem"
                data-font-ratio="${o.fontRatio}"
                style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;
-                      font-size:${fontPx}px;font-weight:${fw};text-align:${ta};text-shadow:${sh};color:${escapeHtml(o.color)};">${escapeHtml(o.text)}</div>`;
+                      font-size:${fontPx.toFixed(2)}px;font-weight:${fw};text-align:${ta};text-shadow:${sh};color:${escapeHtml(o.color)};">${escapeHtml(o.text)}</div>`;
       }).join("");
     }
 
@@ -3968,7 +3980,7 @@
       }
 
       const canvasWidth = Math.max(1, editOverlayLayer?.clientWidth || imgCanvas?.clientWidth || 440);
-      const fontPx = fontPxFromRatio(o.fontRatio, canvasWidth);
+      const fontPx = Math.round(fontPxFromRatio(o.fontRatio, canvasWidth));
       ovFont.value = String(fontPx);
       ovFontVal.textContent = String(fontPx);
       ovColor.value = o.color || "#000000";
@@ -4065,6 +4077,9 @@
         base: {...o},
         canvasRect
       };
+      const activeEl = editOverlayLayer.querySelector(`[data-ov="${CSS.escape(id)}"]`);
+      if(activeEl && type === "move") activeEl.classList.add("dragging");
+      if(type === "move") imgCanvas.classList.add("movingOverlay");
       imgCanvas.setPointerCapture?.(e.pointerId);
     }
 
@@ -4075,7 +4090,7 @@
 
       const handle = e.target.closest?.(".handle");
       const ovEl = e.target.closest?.(".editOv");
-      const isTxt = e.target.classList?.contains("txt");
+      const isTxt = !!e.target.closest?.(".txt");
 
       if(handle && ovEl){
         const id = ovEl.getAttribute("data-ov");
@@ -4090,17 +4105,6 @@
         setSelectedOverlay(id, { rerender:false });
 
         if(isTxt){
-          const r = ovEl.getBoundingClientRect();
-          const edge = 10;
-          const nearFrame =
-            (e.clientX - r.left) <= edge ||
-            (r.right - e.clientX) <= edge ||
-            (e.clientY - r.top) <= edge ||
-            (r.bottom - e.clientY) <= edge;
-          if(nearFrame){
-            startDrag(e, "move", id);
-            e.preventDefault();
-          }
           return;
         }
 
@@ -4151,6 +4155,8 @@
     }
 
     function onCanvasPointerUp(){
+      editOverlayLayer.querySelectorAll?.(".editOv.dragging").forEach(el=>el.classList.remove("dragging"));
+      imgCanvas.classList.remove("movingOverlay");
       dragState = null;
     }
 
