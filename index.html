@@ -27,8 +27,8 @@
       --cardH: min(56vh, 460px);
       --lessonBarReserve: calc(78px + env(safe-area-inset-bottom));
 
-      --shuffleTotalMs: 420;
-      --shuffleSteps: 10;
+      --shuffleTotalMs: 260;
+      --shuffleSteps: 6;
       --shuffleBlurPx: 2.5;
       --shuffleSkewDeg: 0.7;
 
@@ -2227,10 +2227,10 @@
 
     function firstLineFromTalk(raw){
       const plain = stripMarkers(String(raw ?? "")).replace(/\r\n/g,"\n");
-      const s = plain.trim();
-      if(!s) return "（未登録）";
-      const line = s.split("\n")[0].trim();
-      return line || "（未登録）";
+      const lines = plain.split("\n");
+      const first = String(lines[0] ?? "").trim();
+      if(!first) return "";
+      return first;
     }
 
     function isSpecialItem(item){
@@ -2256,7 +2256,9 @@
 
       applyStageMode(item);
 
-      const raw = (item.talk || "").trim() || "（未登録）";
+      const rawTalk = String(item.talk || "");
+      const hasAnyTalk = !!stripMarkers(rawTalk).trim();
+      const raw = hasAnyTalk ? rawTalk : "（未登録）";
 
       if(isSpecialItem(item)){
         firstLineText.innerHTML = toTalkHtml(raw);
@@ -2264,9 +2266,15 @@
         firstLine.classList.add("show");
       }else{
         const line = firstLineFromTalk(raw);
-        firstLineText.textContent = line;
-        firstLineBox.classList.remove("expanded");
-        firstLine.classList.add("show");
+        if(line){
+          firstLineText.textContent = line;
+          firstLineBox.classList.remove("expanded");
+          firstLine.classList.add("show");
+        }else{
+          firstLineText.textContent = "";
+          firstLineBox.classList.remove("expanded");
+          firstLine.classList.remove("show");
+        }
       }
 
       requestAnimationFrame(()=>{
@@ -2735,11 +2743,11 @@
         preloadItemImage(first);
       }
 
-      let totalMs = getCssNumber("--shuffleTotalMs", 420);
+      let totalMs = getCssNumber("--shuffleTotalMs", 260);
       totalMs = Math.max(120, Math.min(1200, Math.floor(totalMs)));
 
-      let steps = Math.floor(getCssNumber("--shuffleSteps", 10));
-      steps = Math.max(8, Math.min(24, steps));
+      let steps = Math.floor(getCssNumber("--shuffleSteps", 6));
+      steps = Math.max(3, Math.min(24, steps));
 
       const minStepMs = 22;
       let stepMs = Math.floor(totalMs / steps);
@@ -2816,7 +2824,9 @@
       if(!currentItem) return;
       if(isSpecialItem(currentItem)) return;
 
-      const raw = (currentItem.talk || "").trim() || "（未登録）";
+      const rawTalk = String(currentItem.talk || "");
+      const raw = stripMarkers(rawTalk).trim() ? rawTalk : "（未登録）";
+      firstLine.classList.add("show");
       firstLineBox.classList.add("expanded");
       firstLineText.innerHTML = toTalkHtml(raw);
     }
