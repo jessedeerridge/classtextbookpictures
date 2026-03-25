@@ -1162,25 +1162,25 @@
 
     .editOv{
       position:absolute;
-      border: 1px dashed rgba(255,255,255,.55);
+      border: none;
+      outline: 1px dashed rgba(255,255,255,.55);
+      outline-offset: -1px;
       background: rgba(0,0,0,.10);
       border-radius:10px;
-      padding:6px 8px;
+      padding:0;
       min-width: 48px;
       min-height: 26px;
       cursor: move;
-      display:flex;
-      align-items:flex-start;
-      justify-content:flex-start;
       overflow:hidden;
     }
     .editOv .txt{
       outline:none;
       width:100%;
       height:100%;
-      color:#fff;
-      font-weight:900;
-      text-shadow: 0 2px 8px rgba(0,0,0,.55);
+      padding:6px 8px;
+      color:#000;
+      font-weight:400;
+      text-shadow: none;
       white-space:pre-wrap;
       word-break:break-word;
       line-height:1.15;
@@ -1188,7 +1188,7 @@
       cursor:text;
     }
     .editOv.selected{
-      border-color: rgba(79,124,255,.95);
+      outline-color: rgba(79,124,255,.95);
       box-shadow: 0 0 0 3px rgba(79,124,255,.18);
       background: rgba(79,124,255,.10);
     }
@@ -1618,13 +1618,13 @@
 
               <div class="kv">
                 <label>サイズ</label>
-                <input class="range" id="ovFont" type="range" min="10" max="96" step="1" value="36">
-                <span class="miniPill"><span id="ovFontVal">36</span>px</span>
+                <input class="range" id="ovFont" type="range" min="10" max="96" step="1" value="16">
+                <span class="miniPill"><span id="ovFontVal">16</span>px</span>
               </div>
 
               <div class="kv">
                 <label>色</label>
-                <input class="color" id="ovColor" type="color" value="#ffffff">
+                <input class="color" id="ovColor" type="color" value="#000000">
                 <span class="toolHint">（文字色）</span>
               </div>
 
@@ -2323,7 +2323,7 @@
     function sanitizeOverlays(arr){
       const a = Array.isArray(arr) ? arr : [];
       const out = [];
-      const fallbackFontRatio = 36 / 440;
+      const fallbackFontRatio = 16 / 440;
       for(const it of a){
         if(!it) continue;
         const id = String(it.id || "");
@@ -2341,10 +2341,10 @@
           0.26,
           fallbackFontRatio
         );
-        const font = clampNum(Number.isFinite(fontRaw) ? fontRaw : (fontRatio * 440), 10, 120, 36);
-        const color = String(it.color || "#ffffff");
+        const font = clampNum(Number.isFinite(fontRaw) ? fontRaw : (fontRatio * 440), 10, 120, 16);
+        const color = String(it.color || "#000000");
         const bold = !!it.bold;
-        const shadow = (it.shadow !== false);
+        const shadow = !!it.shadow;
         const align = (it.align==="center"||it.align==="right") ? it.align : "left";
         out.push({id, text, x, y, w, h, font, fontRatio, color, bold, shadow, align});
       }
@@ -2359,12 +2359,12 @@
       return Math.max(min, Math.min(max, n));
     }
     function fontPxFromRatio(ratio, containerWidth){
-      return clampNum(Math.round((Number(ratio) || (36/440)) * Math.max(1, Number(containerWidth) || 440)), 10, 120, 36);
+      return clampNum(Math.round((Number(ratio) || (16/440)) * Math.max(1, Number(containerWidth) || 440)), 10, 120, 16);
     }
     function syncOverlayFontsIn(root){
       const host = root || document;
       host.querySelectorAll?.(".ovItem[data-font-ratio]").forEach(el=>{
-        const ratio = clampNum(Number(el.getAttribute("data-font-ratio")), 0.018, 0.26, 36/440);
+        const ratio = clampNum(Number(el.getAttribute("data-font-ratio")), 0.018, 0.26, 16/440);
         const containerWidth = el.parentElement?.clientWidth || 440;
         el.style.fontSize = `${fontPxFromRatio(ratio, containerWidth)}px`;
       });
@@ -2375,7 +2375,7 @@
         const top  = (o.y*100).toFixed(4);
         const width= (o.w*100).toFixed(4);
         const height=(o.h*100).toFixed(4);
-        const fw = o.bold ? 900 : 700;
+        const fw = o.bold ? 900 : 400;
         const ta = o.align;
         const sh = o.shadow ? "0 2px 8px rgba(0,0,0,.55)" : "none";
         const fontPx = fontPxFromRatio(o.fontRatio, containerWidth);
@@ -3903,11 +3903,11 @@
         y: 0.10,
         w: 0.45,
         h: 0.18,
-        font: 36,
-        fontRatio: 36 / 440,
-        color: "#ffffff",
-        bold: true,
-        shadow: true,
+        font: 16,
+        fontRatio: 16 / 440,
+        color: "#000000",
+        bold: false,
+        shadow: false,
         align: "left"
       };
     }
@@ -3916,9 +3916,18 @@
       return editOverlays.find(o => o.id === selectedOvId) || null;
     }
 
-    function setSelectedOverlay(id){
+    function refreshEditOverlaySelection(){
+      editOverlayLayer.querySelectorAll?.(".editOv[data-ov]").forEach(el=>{
+        const isSelected = (el.getAttribute("data-ov") || "") === (selectedOvId || "");
+        el.classList.toggle("selected", isSelected);
+      });
+    }
+
+    function setSelectedOverlay(id, opts = {}){
+      const rerender = opts.rerender !== false;
       selectedOvId = id || null;
-      renderEditOverlays();
+      if(rerender) renderEditOverlays();
+      else refreshEditOverlaySelection();
       syncControlsFromSelected();
     }
 
@@ -3933,18 +3942,20 @@
       alignBtns.forEach(b=>b.disabled = !has);
 
       if(!has){
-        ovFont.value = "36";
-        ovFontVal.textContent = "36";
-        ovColor.value = "#ffffff";
+        ovFont.value = "16";
+        ovFontVal.textContent = "16";
+        ovColor.value = "#000000";
         ovBold.classList.remove("active");
-        ovShadow.classList.add("active");
+        ovShadow.classList.remove("active");
         alignBtns.forEach(b=>b.classList.remove("active"));
         return;
       }
 
-      ovFont.value = String(o.font || 36);
-      ovFontVal.textContent = String(o.font || 36);
-      ovColor.value = o.color || "#ffffff";
+      const canvasWidth = Math.max(1, editOverlayLayer?.clientWidth || imgCanvas?.clientWidth || 440);
+      const fontPx = fontPxFromRatio(o.fontRatio, canvasWidth);
+      ovFont.value = String(fontPx);
+      ovFontVal.textContent = String(fontPx);
+      ovColor.value = o.color || "#000000";
       ovBold.classList.toggle("active", !!o.bold);
       ovShadow.classList.toggle("active", o.shadow !== false);
       alignBtns.forEach(b=>{
@@ -3960,7 +3971,7 @@
       const canvasWidth = Math.max(1, editOverlayLayer?.clientWidth || imgCanvas?.clientWidth || 440);
 
       for(const o of overlays){
-        o.font = fontPxFromRatio(o.fontRatio, canvasWidth);
+        const fontPx = fontPxFromRatio(o.fontRatio, canvasWidth);
 
         const el = document.createElement("div");
         el.className = "editOv";
@@ -3978,9 +3989,9 @@
         txt.spellcheck = false;
         txt.textContent = o.text || "";
 
-        txt.style.fontSize = `${o.font}px`;
-        txt.style.fontWeight = o.bold ? "900" : "700";
-        txt.style.color = o.color || "#fff";
+        txt.style.fontSize = `${fontPx}px`;
+        txt.style.fontWeight = o.bold ? "900" : "400";
+        txt.style.color = o.color || "#000";
         txt.style.textAlign = o.align || "left";
         txt.style.textShadow = (o.shadow !== false) ? "0 2px 8px rgba(0,0,0,.55)" : "none";
 
@@ -4052,7 +4063,7 @@
 
       if(handle && ovEl){
         const id = ovEl.getAttribute("data-ov");
-        setSelectedOverlay(id);
+        setSelectedOverlay(id, { rerender:false });
         startDrag(e, "resize", id);
         e.preventDefault();
         return;
@@ -4060,7 +4071,7 @@
 
       if(ovEl){
         const id = ovEl.getAttribute("data-ov");
-        setSelectedOverlay(id);
+        setSelectedOverlay(id, { rerender:false });
 
         if(isTxt) return;
 
@@ -4069,7 +4080,7 @@
         return;
       }
 
-      setSelectedOverlay(null);
+      setSelectedOverlay(null, { rerender:false });
     }
 
     function onCanvasPointerMove(e){
@@ -4810,11 +4821,11 @@
       const nextFont = Number(ovFont.value);
       applySelectedStyle({
         font: nextFont,
-        fontRatio: clampNum(nextFont / canvasWidth, 0.018, 0.26, 36/440)
+        fontRatio: clampNum(nextFont / canvasWidth, 0.018, 0.26, 16/440)
       });
     });
     ovColor.addEventListener("input", ()=>{
-      applySelectedStyle({ color: String(ovColor.value || "#ffffff") });
+      applySelectedStyle({ color: String(ovColor.value || "#000000") });
     });
     ovBold.addEventListener("click", ()=>{
       const o = getSelectedOverlay();
