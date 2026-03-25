@@ -2379,14 +2379,10 @@
         const ta = o.align;
         const sh = o.shadow ? "0 2px 8px rgba(0,0,0,.55)" : "none";
         const fontPx = fontPxFromRatio(o.fontRatio, containerWidth);
-        return `
-          <div class="ovItem"
+        return `<div class="ovItem"
                data-font-ratio="${o.fontRatio}"
                style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;
-                      font-size:${fontPx}px;font-weight:${fw};text-align:${ta};text-shadow:${sh};color:${escapeHtml(o.color)};">
-            ${escapeHtml(o.text)}
-          </div>
-        `;
+                      font-size:${fontPx}px;font-weight:${fw};text-align:${ta};text-shadow:${sh};color:${escapeHtml(o.color)};">${escapeHtml(o.text)}</div>`;
       }).join("");
     }
 
