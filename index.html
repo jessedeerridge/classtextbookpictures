@@ -1094,6 +1094,10 @@
       user-select:none;
       overflow:hidden;
     }
+    .imgCanvas.movingOverlay,
+    .imgCanvas.movingOverlay *{
+      cursor: grabbing !important;
+    }
     .imgCanvas img{
       position:absolute;
       left:12px; top:12px;
@@ -4073,6 +4077,7 @@
       };
       const activeEl = editOverlayLayer.querySelector(`[data-ov="${CSS.escape(id)}"]`);
       if(activeEl && type === "move") activeEl.classList.add("dragging");
+      if(type === "move") imgCanvas.classList.add("movingOverlay");
       imgCanvas.setPointerCapture?.(e.pointerId);
     }
 
@@ -4149,6 +4154,7 @@
 
     function onCanvasPointerUp(){
       editOverlayLayer.querySelectorAll?.(".editOv.dragging").forEach(el=>el.classList.remove("dragging"));
+      imgCanvas.classList.remove("movingOverlay");
       dragState = null;
     }
 
