@@ -3375,6 +3375,7 @@
               </div>
               <div class="actions">
                 <button class="btn small ${it.hidden ? "" : "primary"}" data-action="toggle-vis">${it.hidden ? "表示にする" : "非表示にする"}</button>
+                ${isCombo ? `<button class="btn small" data-action="uncombine">連結解除</button>` : ""}
                 ${canDelete ? `<button class="btn small danger" data-action="del">削除</button>` : ""}
               </div>
             </div>
@@ -4268,6 +4269,26 @@
       }catch(_){}
     }
 
+    async function uncombineItem(groupKey, lessonKey, pageKey, item){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+        if(!item || item.type !== "combo") throw new Error("連結カードを選択してください。");
+        const comboId = String(item.comboId || item.id || "").replace(/^combo_/, "");
+        if(!comboId) throw new Error("連結IDが不正です。");
+
+        const ok = confirm("この連結カードを解除しますか？");
+        if(!ok) return;
+
+        await db.ref(`${pageCombosPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${comboId}`).remove();
+        await loadAdminList();
+        setStatus2("連結を解除しました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+      }catch(err){
+        setStatus2(err?.message || String(err || ""), "err");
+      }
+    }
+
     function closeEditModalAutoSave(){
       if(!editTarget){
         showEditModal(false);
@@ -4583,6 +4604,17 @@
         const id = card?.getAttribute("data-id") || "";
         const hit = lastRendered.find(x => x.id === id);
         if(hit) toggleVisibility(adminGroup.value, lessonKey, pageKey, hit);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const uncombineBtn = e.target.closest('[data-action="uncombine"]');
+      if(uncombineBtn){
+        const card = uncombineBtn.closest(".card");
+        const id = card?.getAttribute("data-id") || "";
+        const hit = lastRendered.find(x => x.id === id);
+        if(hit) uncombineItem(adminGroup.value, lessonKey, pageKey, hit);
         e.preventDefault();
         e.stopPropagation();
         return;
