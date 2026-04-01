@@ -4513,6 +4513,10 @@
       if(!b || !currentLessonKey) return;
       const pageKey = b.getAttribute("data-page-key") || DEFAULT_PAGE_KEY;
       if(pageKey === currentPageKey) return;
+
+      stageBranchBar.querySelectorAll(".branchBtn.active").forEach((btn)=>btn.classList.remove("active"));
+      b.classList.add("active");
+
       await loadLessonItemsForViewer(currentGroupKey, currentLessonKey, pageKey);
     });
 
