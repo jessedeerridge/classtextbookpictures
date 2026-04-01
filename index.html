@@ -671,8 +671,17 @@
       border-color: rgba(79,124,255,.45);
       box-shadow: 0 0 0 3px rgba(79,124,255,.16);
     }
+    #authModal .input{
+      background:#fff;
+      color:#000;
+      border:1px solid rgba(0,0,0,.2);
+    }
+    #authModal .input::placeholder{
+      color:rgba(0,0,0,.55);
+    }
     .hint{font-size:11px;color:rgba(232,238,247,.55);line-height:1.45}
     textarea.input{min-height: 86px; resize: vertical; line-height:1.55; padding:10px 10px;}
+    .retired{display:none !important;}
 
     .grid{
       max-width:1100px;
@@ -1403,11 +1412,11 @@
               <input class="input" id="lessonLabelInput" placeholder="選択中の課の名前" style="flex:1;min-width:180px;" />
               <button class="btn small" id="btnRenameLesson" type="button">名前変更</button>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+            <div class="retired" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="newLessonLabel" placeholder="例：L1 / あいさつ / まとめ" style="flex:1;min-width:180px;" />
               <button class="btn small primary" id="btnAddLesson" type="button">課を追加</button>
             </div>
-            <div class="hint">課はクラスごとに自分で追加・命名できます。この選択が下の登録内容すべてに共通で使われます。</div>
+            <div class="hint">課は固定です（Ⅰ/Ⅲ: L1〜L7、Ⅱ/Ⅳ: L8〜L15）。</div>
           </div>
           <div class="field">
             <div class="label">登録するページ分岐</div>
@@ -1416,17 +1425,17 @@
               <input class="input" id="pageLabelInput" placeholder="選択中ページの表示名" style="flex:1;min-width:180px;" />
               <button class="btn small" id="btnRenamePage" type="button">名前変更</button>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+            <div class="retired" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="newPageLabel" placeholder="例：A / B / 発展" style="flex:1;min-width:180px;" />
               <button class="btn small primary" id="btnAddPage" type="button">分岐追加</button>
               <button class="btn small danger" id="btnDeletePage" type="button">分岐削除</button>
             </div>
-            <div class="hint">メインも分岐も名前変更できます。分岐はLごと・クラスごとに独立して保存され、メインページだけ削除不可です。</div>
+            <div class="hint">ページ分岐は固定です（L1→1-1/1-2 のように自動表示）。</div>
           </div>
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel retired">
         <div class="panelHead">
           <div class="panelTitle">画像カード登録</div>
           <div class="status" id="status"></div>
@@ -1474,7 +1483,7 @@
         </div>
       </section>
 
-      <section class="queue" id="queuePanel">
+      <section class="queue retired" id="queuePanel">
         <div class="queueHead">
           <div class="queueTitle">アップロード待ち：<span id="queueCount">0</span> 件</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
