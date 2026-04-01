@@ -3088,13 +3088,10 @@
       const className = String(group?.label || "").trim();
       const safePageLabel = String(pageLabel || "").trim();
       const base = `${className}${safePageLabel}(${index})`;
-      const exts = ["jpg","jpeg","png","webp"];
-      const urls = [];
-      for(const ext of exts){
-        urls.push(`${base}.${ext}`);
-        urls.push(`${className}/${base}.${ext}`);
-      }
-      return urls;
+      return [
+        `${base}.jpg`,
+        `${className}/${base}.jpg`
+      ];
     }
 
     async function imageUrlExists(url){
@@ -3108,8 +3105,8 @@
         };
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
-        img.src = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
-        setTimeout(()=> finish(false), 2000);
+        img.src = url;
+        setTimeout(()=> finish(false), 1200);
       });
     }
 
@@ -3124,7 +3121,8 @@
       const items = [];
       const imageById = new Map();
 
-      for(let i=1; i<=40; i++){
+      const discoveries = await Promise.all(Array.from({ length: 40 }, async (_, idxRaw)=>{
+        const i = idxRaw + 1;
         const id = `img_${sanitizeId(groupKey)}_${sanitizeId(lessonKey)}_${sanitizeId(pageKey)}_${i}`;
         const candidates = buildImageCandidates(groupKey, pageLabel, i);
         let hitUrl = "";
@@ -3134,12 +3132,12 @@
             break;
           }
         }
-        if(!hitUrl) continue;
+        if(!hitUrl) return null;
 
         const saved = metaMap[id] || {};
         const hidden = !!saved.hidden;
-        if(hidden && !includeHidden) continue;
-        items.push({
+        if(hidden && !includeHidden) return null;
+        return {
           id,
           type: "image",
           dataUrl: hitUrl,
@@ -3151,14 +3149,19 @@
           order: Number(saved.order || (i * 1000)) || (i * 1000),
           createdBy: "",
           createdByEmail: ""
-        });
-        imageById.set(id, {
-          id,
-          url: hitUrl,
-          talk: String(saved.talk || ""),
-          overlays: saved.overlays || [],
-          hidden,
-          order: Number(saved.order || (i * 1000)) || (i * 1000)
+        };
+      }));
+
+      for(const item of discoveries){
+        if(!item) continue;
+        items.push(item);
+        imageById.set(item.id, {
+          id: item.id,
+          url: item.dataUrl,
+          talk: item.talk,
+          overlays: item.overlays || [],
+          hidden: !!item.hidden,
+          order: item.order
         });
       }
 
