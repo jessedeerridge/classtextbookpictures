@@ -588,21 +588,30 @@
       margin:0 auto;
       display:flex;
       gap:8px;
-      flex-wrap:wrap;
-      justify-content:center;
+      flex-wrap:nowrap;
+      justify-content:flex-start;
       align-items:center;
+      overflow-x:auto;
+      scrollbar-width: thin;
     }
     .lessonBtn{
       border:1px solid rgba(111,71,43,.16);
       background: rgba(255,255,255,.72);
       color: rgba(79,52,34,.9);
-      padding:8px 10px;
+      width:34px;
+      height:34px;
+      min-width:34px;
+      padding:0;
       border-radius:999px;
       font-weight:900;
-      font-size:12px;
+      font-size:10px;
       cursor:pointer;
       user-select:none;
       -webkit-tap-highlight-color:transparent;
+      white-space:nowrap;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
     }
     .lessonBtn:active{
       border-color: rgba(215,121,67,.46);
@@ -2159,11 +2168,10 @@
       const lessonButtons = selectedGroup ? buildLessonButtonsForGroup(currentGroupKey) : "";
 
       lessonRow.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;">
+        <div style="display:flex;gap:8px;flex-wrap:nowrap;align-items:center;justify-content:flex-start;white-space:nowrap;">
           ${selectedGroup
             ? `<button class="lessonBtn active" data-group="${escapeHtml(selectedGroup.key)}" aria-label="選択中のクラス">${escapeHtml(selectedGroup.label)}</button>`
             : buildGroupButtons()}
-          ${selectedGroup ? `<span style="width:1px;height:24px;background:rgba(111,71,43,.18);"></span>` : ""}
           ${lessonButtons}
           ${selectedGroup ? `<button class="lessonBtn" data-reset="1" aria-label="最初の画面に戻る">↻</button>` : ""}
         </div>
