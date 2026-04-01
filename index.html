@@ -3133,8 +3133,12 @@
       ];
     }
 
-    async function imageUrlExists(url){
-      return new Promise((resolve)=>{
+    const _imageExistsCache = new Map();
+    async function imageUrlExists(url, timeoutMs = 900){
+      const key = String(url || "");
+      if(!key) return false;
+      if(_imageExistsCache.has(key)) return _imageExistsCache.get(key);
+      const req = new Promise((resolve)=>{
         const img = new Image();
         let done = false;
         const finish = (ok)=>{
@@ -3144,9 +3148,11 @@
         };
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
-        img.src = url;
-        setTimeout(()=> finish(false), 900);
+        img.src = key;
+        setTimeout(()=> finish(false), Math.max(120, Number(timeoutMs) || 900));
       });
+      _imageExistsCache.set(key, req);
+      return req;
     }
 
     async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false, options = {}){
@@ -3169,7 +3175,8 @@
           order: Number(saved.order || (i * 1000)) || (i * 1000),
           hidden: !!saved.hidden
         };
-      }).sort((a,b)=>(a.order||0)-(b.order||0) || a.i - b.i);
+      }).sort((a,b)=>a.i - b.i);
+      let preferredCandidateIndex = null;
 
       for(const plan of imagePlans){
         if(plan.hidden && !includeHidden){
@@ -3177,10 +3184,19 @@
         }
 
         const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
+        const probeOrder = preferredCandidateIndex === null
+          ? [0, 1]
+          : [preferredCandidateIndex, preferredCandidateIndex === 0 ? 1 : 0];
         let hitUrl = "";
-        for(const url of candidates){
-          if(await imageUrlExists(url)){
+        for(const candidateIndex of probeOrder){
+          const url = candidates[candidateIndex];
+          if(!url) continue;
+          const timeoutMs = candidateIndex === preferredCandidateIndex ? 520 : 260;
+          if(await imageUrlExists(url, timeoutMs)){
             hitUrl = url;
+            if(preferredCandidateIndex === null){
+              preferredCandidateIndex = candidateIndex;
+            }
             break;
           }
         }
