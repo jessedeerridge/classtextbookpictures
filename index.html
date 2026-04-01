@@ -2780,8 +2780,27 @@
       return { firstReady, batchReady };
     }
 
+    const imagePreloadCache = new Map();
     async function preloadItemImage(item){
-      return;
+      const url = String(item?.dataUrl || "").trim();
+      if(!url) return;
+      if(imagePreloadCache.has(url)){
+        return imagePreloadCache.get(url);
+      }
+      const p = new Promise((resolve)=>{
+        const img = new Image();
+        let done = false;
+        const finish = ()=>{
+          if(done) return;
+          done = true;
+          resolve();
+        };
+        img.onload = finish;
+        img.onerror = finish;
+        img.src = url;
+      });
+      imagePreloadCache.set(url, p);
+      return p;
     }
 
     function animateTranslateStep({fromX, toX, durationMs, onFrame, token}){
@@ -3158,7 +3177,7 @@
           order: Number(saved.order || (i * 1000)) || (i * 1000),
           hidden: !!saved.hidden
         };
-      }).sort((a,b)=>(a.order||0)-(b.order||0) || a.i - b.i);
+      });
 
       const states = new Array(imagePlans.length);
       let cursor = 0;
@@ -3184,51 +3203,54 @@
         }
       };
 
-      const workerCount = Math.max(1, Math.min(8, imagePlans.length));
+      const loadImagePlan = async (plan)=>{
+        if(plan.hidden && !includeHidden) return null;
+        const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
+        let hitUrl = "";
+        const fallbackUrls = [];
+        for(let c = 0; c < candidates.length; c++){
+          const url = candidates[c];
+          if(!url) continue;
+          if(await imageUrlExists(url)){
+            hitUrl = url;
+            if(c + 1 < candidates.length){
+              fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
+            }
+            break;
+          }
+        }
+        if(!hitUrl) return null;
+        return {
+          id: plan.id,
+          type: "image",
+          dataUrl: hitUrl,
+          fallbackUrls,
+          images: [],
+          talk: String(plan.saved.talk || ""),
+          overlays: plan.saved.overlays || [],
+          hidden: plan.hidden,
+          createdAt: 0,
+          order: plan.order,
+          createdBy: "",
+          createdByEmail: ""
+        };
+      };
+
+      const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
+      const eagerPlans = imagePlans.slice(0, eagerCount);
+      for(let i = 0; i < eagerPlans.length; i++){
+        const plan = eagerPlans[i];
+        states[i] = await loadImagePlan(plan);
+        flushReady();
+      }
+      cursor = eagerPlans.length;
+
+      const workerCount = Math.max(1, Math.min(4, imagePlans.length - cursor));
       const workers = Array.from({ length: workerCount }, async ()=>{
         while(cursor < imagePlans.length){
           const idx = cursor++;
           const plan = imagePlans[idx];
-          if(plan.hidden && !includeHidden){
-            states[idx] = null;
-            flushReady();
-            continue;
-          }
-
-          const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-          let hitUrl = "";
-          const fallbackUrls = [];
-          for(let c = 0; c < candidates.length; c++){
-            const url = candidates[c];
-            if(!url) continue;
-            if(await imageUrlExists(url)){
-              hitUrl = url;
-              if(c + 1 < candidates.length){
-                fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
-              }
-              break;
-            }
-          }
-          if(!hitUrl){
-            states[idx] = null;
-            flushReady();
-            continue;
-          }
-
-          states[idx] = {
-            id: plan.id,
-            type: "image",
-            dataUrl: hitUrl,
-            fallbackUrls,
-            images: [],
-            talk: String(plan.saved.talk || ""),
-            overlays: plan.saved.overlays || [],
-            hidden: plan.hidden,
-            createdAt: 0,
-            order: plan.order,
-            createdBy: "",
-            createdByEmail: ""
-          };
+          states[idx] = await loadImagePlan(plan);
           flushReady();
         }
       });
@@ -3302,7 +3324,6 @@
           onItem: (item)=>{
             if(isStale()) return;
             lessonItems.push(item);
-            lessonItems.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
             stageIndexVisibleCount = lessonItems.length;
             if(!currentItem && lessonItems.length){
               showOneItemInstant(lessonItems[0]);
