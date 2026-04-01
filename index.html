@@ -1751,6 +1751,9 @@
     function pageImageMetaPath(groupKey, lessonKey, pageKey){
       return `${pageItemsPath(groupKey, lessonKey, pageKey)}/_images`;
     }
+    function pageCombosPath(groupKey, lessonKey, pageKey){
+      return `${pageItemsPath(groupKey, lessonKey, pageKey)}/_combos`;
+    }
 
     const $ = (s)=>document.querySelector(s);
 
@@ -3112,9 +3115,14 @@
 
     async function discoverPageImageItems(groupKey, lessonKey, pageKey){
       const pageLabel = (lessonPages.find(p => p.key === pageKey)?.label) || "";
-      const metaSnap = await db.ref(pageImageMetaPath(groupKey, lessonKey, pageKey)).get();
+      const [metaSnap, comboSnap] = await Promise.all([
+        db.ref(pageImageMetaPath(groupKey, lessonKey, pageKey)).get(),
+        db.ref(pageCombosPath(groupKey, lessonKey, pageKey)).get()
+      ]);
       const metaMap = metaSnap.val() || {};
+      const comboMap = comboSnap.val() || {};
       const items = [];
+      const imageById = new Map();
 
       for(let i=1; i<=40; i++){
         const id = `img_${sanitizeId(groupKey)}_${sanitizeId(lessonKey)}_${sanitizeId(pageKey)}_${i}`;
@@ -3137,14 +3145,55 @@
           talk: String(saved.talk || ""),
           overlays: saved.overlays || [],
           createdAt: 0,
-          order: i * 1000,
+          order: Number(saved.order || (i * 1000)) || (i * 1000),
           createdBy: "",
           createdByEmail: ""
         });
+        imageById.set(id, {
+          id,
+          url: hitUrl,
+          talk: String(saved.talk || ""),
+          overlays: saved.overlays || [],
+          order: Number(saved.order || (i * 1000)) || (i * 1000)
+        });
       }
 
-      items.sort((a,b)=>(a.order||0)-(b.order||0));
-      return items;
+      const comboItems = [];
+      Object.entries(comboMap).forEach(([comboId, combo])=>{
+        const imageIds = Array.isArray(combo?.imageIds) ? combo.imageIds : [];
+        const parts = imageIds.map(id => imageById.get(String(id))).filter(Boolean);
+        if(parts.length < 2) return;
+        parts.forEach(part => imageById.delete(part.id));
+        comboItems.push({
+          id: `combo_${comboId}`,
+          type: "combo",
+          dataUrl: "",
+          images: parts.map(p => p.url),
+          talk: String(combo?.talk || ""),
+          overlays: [],
+          createdAt: 0,
+          order: Number(combo?.order || 0) || 0,
+          createdBy: "",
+          createdByEmail: "",
+          comboId
+        });
+      });
+
+      const singleItems = [...imageById.values()].map(v=>({
+        id: v.id,
+        type: "image",
+        dataUrl: v.url,
+        images: [],
+        talk: v.talk,
+        overlays: v.overlays,
+        createdAt: 0,
+        order: v.order,
+        createdBy: "",
+        createdByEmail: ""
+      }));
+
+      return [...singleItems, ...comboItems]
+        .sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
     }
 
     async function loadLessonItemsForViewer(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
@@ -3515,48 +3564,27 @@
         const items = ids.map(id => lastRendered.find(x => x.id === id)).filter(Boolean);
 
         for(const it of items){
-          if(it.createdBy !== currentUser.uid){
-            throw new Error("連結は「自分が作成したカード」だけ可能です。");
-          }
-          if(it.type === "special"){
-            throw new Error("スペシャルカードは連結対象にできません。");
-          }
+          if(it.type !== "image") throw new Error("連結対象は通常画像カードのみです。");
         }
-
-        const images = [];
-        for(const it of items){
-          if(it.type === "combo"){
-            const arr = Array.isArray(it.images) ? it.images : [];
-            for(const u of arr) if(u) images.push(u);
-          }else{
-            if(it.dataUrl) images.push(it.dataUrl);
-          }
-        }
-        if(images.length < 2) throw new Error("画像が足りません。");
 
         const talks = items.map(it => String(it.talk || "").trim()).filter(s=>s);
         const talk = talks.join("\n\n— — —\n\n");
-
-        const minOrder = Math.min(...items.map(it => Number(it.order || it.createdAt || Date.now())));
-        const payload = {
-          type: "combo",
-          images,
-          talk,
-          dataUrl: "",
-          overlays: [],
-          createdAt: firebase.database.ServerValue.TIMESTAMP,
-          order: minOrder || firebase.database.ServerValue.TIMESTAMP,
-          createdBy: currentUser.uid,
-          createdByEmail: currentUser.email || ""
-        };
+        const minOrder = Math.min(...items.map(it => Number(it.order || Date.now())));
+        const imageIds = items.map(it => it.id);
 
         setStatus2("連結カードを保存中...", null);
-        const ref = db.ref(pageItemsPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
-        await ref.set(payload);
+        const ref = db.ref(pageCombosPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
+        await ref.set({
+          imageIds,
+          talk,
+          order: minOrder || firebase.database.ServerValue.TIMESTAMP,
+          createdAt: firebase.database.ServerValue.TIMESTAMP,
+          createdBy: currentUser.uid,
+          createdByEmail: currentUser.email || ""
+        });
 
         selectedIds.clear();
         updateSelectButtons();
-        await syncAdminPageOptions(adminGroup.value, adminLesson.value, adminPage.value || DEFAULT_PAGE_KEY);
         await loadAdminList();
 
         setStatus2("連結して保存しました ✅", "ok");
@@ -4110,8 +4138,16 @@
           updatedAt: firebase.database.ServerValue.TIMESTAMP,
           updatedBy: currentUser.uid
         };
-
-        await db.ref(`${pageImageMetaPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
+        if(editTarget.isCombo){
+          const comboId = String(id || "").replace(/^combo_/, "");
+          await db.ref(`${pageCombosPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${comboId}`).update({
+            talk: editTalkMarkers,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP,
+            updatedBy: currentUser.uid
+          });
+        }else{
+          await db.ref(`${pageImageMetaPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
+        }
 
         showEditModal(false);
         editTarget = null;
@@ -4150,7 +4186,21 @@
     // ✅ 並び替え：ドラッグ&ドロップで order を再採番して保存
     // =========================
     function renumberOrdersAndSave(groupKey, lessonKey, pageKey, items){
-      return Promise.resolve();
+      const updates = {};
+      const base = 1000;
+      items.forEach((it, idx)=>{
+        const ord = (idx + 1) * base;
+        if(it.type === "combo"){
+          const comboId = String(it.comboId || "").trim() || String(it.id || "").replace(/^combo_/, "");
+          if(comboId){
+            updates[`${pageCombosPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${comboId}/order`] = ord;
+          }
+          return;
+        }
+        updates[`${pageImageMetaPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
+      });
+      if(!Object.keys(updates).length) return Promise.resolve();
+      return db.ref().update(updates);
     }
 
     function clearDropHints(){
