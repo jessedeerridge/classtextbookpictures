@@ -3141,7 +3141,7 @@
       ];
     }
 
-    async function imageUrlExists(url, timeoutMs = 2200){
+    async function imageUrlExists(url, timeoutMs = 1600){
       return new Promise((resolve)=>{
         const img = new Image();
         let done = false;
@@ -3153,7 +3153,7 @@
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
         img.src = url;
-        setTimeout(()=> finish(false), Math.max(300, Number(timeoutMs) || 2200));
+        setTimeout(()=> finish(false), Math.max(250, Number(timeoutMs) || 1600));
       });
     }
 
@@ -3179,42 +3179,17 @@
         };
       });
 
-      const states = new Array(imagePlans.length);
-      let cursor = 0;
-      let emitCursor = 0;
-
-      const flushReady = ()=>{
-        while(emitCursor < states.length && states[emitCursor] !== undefined){
-          const item = states[emitCursor];
-          if(item){
-            items.push(item);
-            onItem?.(item, items.length - 1);
-            imageById.set(item.id, {
-              id: item.id,
-              url: item.dataUrl,
-              fallbackUrls: item.fallbackUrls || [],
-              talk: item.talk,
-              overlays: item.overlays || [],
-              hidden: !!item.hidden,
-              order: item.order
-            });
-          }
-          emitCursor++;
-        }
-      };
-
-      const loadImagePlan = async (plan, options = {})=>{
+      const resolveImagePlan = async (plan, timeoutMs = 1600)=>{
         if(plan.hidden && !includeHidden) return null;
         const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-        const probeTimeoutMs = Math.max(300, Number(options.probeTimeoutMs) || 2200);
         let hitUrl = "";
         const fallbackUrls = [];
-        const checks = candidates.map((url)=> url ? imageUrlExists(url, probeTimeoutMs) : Promise.resolve(false));
-        const results = await Promise.all(checks);
-        for(let c = 0; c < results.length; c++){
-          if(results[c]){
-            hitUrl = candidates[c] || "";
-            fallbackUrls.push(...candidates.filter((_, idx)=> idx !== c).filter(Boolean));
+        for(let c = 0; c < candidates.length; c++){
+          const url = candidates[c];
+          if(!url) continue;
+          if(await imageUrlExists(url, timeoutMs)){
+            hitUrl = url;
+            fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
             break;
           }
         }
@@ -3229,32 +3204,38 @@
           overlays: plan.saved.overlays || [],
           hidden: plan.hidden,
           createdAt: 0,
-          order: plan.order,
+          order: plan.i,
           createdBy: "",
           createdByEmail: ""
         };
       };
 
-      const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
-      const eagerPlans = imagePlans.slice(0, eagerCount);
-      const eagerTasks = eagerPlans.map((plan, idx)=> (async ()=>{
-        states[idx] = await loadImagePlan(plan, { probeTimeoutMs: 2800 });
-        flushReady();
-      })());
-      await Promise.all(eagerTasks);
-      cursor = eagerPlans.length;
+      const emitImageItem = (item)=>{
+        if(!item) return;
+        items.push(item);
+        onItem?.(item, items.length - 1);
+        imageById.set(item.id, {
+          id: item.id,
+          url: item.dataUrl,
+          fallbackUrls: item.fallbackUrls || [],
+          talk: item.talk,
+          overlays: item.overlays || [],
+          hidden: !!item.hidden,
+          order: item.order
+        });
+      };
 
-      const workerCount = Math.max(1, Math.min(4, imagePlans.length - cursor));
-      const workers = Array.from({ length: workerCount }, async ()=>{
-        while(cursor < imagePlans.length){
-          const idx = cursor++;
-          const plan = imagePlans[idx];
-          states[idx] = await loadImagePlan(plan);
-          flushReady();
-        }
-      });
-      await Promise.all(workers);
-      flushReady();
+      const priorityPlans = imagePlans.filter(plan => plan.i >= 1 && plan.i <= 3);
+      const remainPlans = imagePlans.filter(plan => plan.i > 3);
+
+      for(const plan of priorityPlans){
+        const item = await resolveImagePlan(plan, 1200);
+        emitImageItem(item);
+      }
+      for(const plan of remainPlans){
+        const item = await resolveImagePlan(plan, 1600);
+        emitImageItem(item);
+      }
 
       const comboItems = [];
       Object.entries(comboMap).forEach(([comboId, combo])=>{
