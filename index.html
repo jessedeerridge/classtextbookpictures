@@ -3100,6 +3100,9 @@
       const isStale = ()=> requestId !== lessonLoadRequestId;
       try{
         if(!db) return;
+        lessonItems = [];
+        stageIndexVisibleCount = 0;
+        renderStageIndexBar();
 
         currentGroupKey = groupKey || currentGroupKey;
         currentLessonKey = lessonKey || "";
