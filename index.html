@@ -3082,21 +3082,16 @@
       return String(raw || "").replace(/[^a-zA-Z0-9_-]+/g, "_");
     }
 
-    function buildClassNameFromSelection(groupKey, lessonKey){
+    function buildImageCandidates(groupKey, pageLabel, index){
       const group = getGroupByKey(groupKey);
-      const lesson = groupLessons.find(x => x.key === lessonKey);
-      return `${group?.label || ""}${lesson?.label || lessonKey || ""}`.trim();
-    }
-
-    function buildImageCandidates(groupKey, lessonKey, pageLabel, index){
-      const className = buildClassNameFromSelection(groupKey, lessonKey);
+      const className = String(group?.label || "").trim();
       const safePageLabel = String(pageLabel || "").trim();
-      const base = `${className}${safePageLabel}の画像(${index})`;
+      const base = `${className}${safePageLabel}(${index})`;
       const exts = ["jpg","jpeg","png","webp"];
       const urls = [];
       for(const ext of exts){
-        urls.push(`${className}/${base}.${ext}`);
         urls.push(`${base}.${ext}`);
+        urls.push(`${className}/${base}.${ext}`);
       }
       return urls;
     }
@@ -3125,7 +3120,7 @@
 
       for(let i=1; i<=40; i++){
         const id = `img_${sanitizeId(groupKey)}_${sanitizeId(lessonKey)}_${sanitizeId(pageKey)}_${i}`;
-        const candidates = buildImageCandidates(groupKey, lessonKey, pageLabel, i);
+        const candidates = buildImageCandidates(groupKey, pageLabel, i);
         let hitUrl = "";
         for(const url of candidates){
           if(await imageUrlExists(url)){
