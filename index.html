@@ -2760,8 +2760,39 @@
       return { firstReady, batchReady };
     }
 
+    const _preloadCache = new Map();
+    function preloadSingleUrl(url){
+      const key = String(url || "");
+      if(!key) return Promise.resolve();
+      if(_preloadCache.has(key)) return _preloadCache.get(key);
+
+      const p = new Promise((resolve)=>{
+        const img = new Image();
+        let done = false;
+        const finish = ()=>{
+          if(done) return;
+          done = true;
+          resolve();
+        };
+        img.onload = finish;
+        img.onerror = finish;
+        img.src = key;
+        if(img.complete) finish();
+      });
+      _preloadCache.set(key, p);
+      return p;
+    }
+
     async function preloadItemImage(item){
-      return;
+      if(!item) return;
+      if(item.type === "combo"){
+        const urls = Array.isArray(item.images) ? item.images.filter(Boolean) : [];
+        for(const url of urls){
+          await preloadSingleUrl(url);
+        }
+        return;
+      }
+      await preloadSingleUrl(item.dataUrl);
     }
 
     function animateTranslateStep({fromX, toX, durationMs, onFrame, token}){
@@ -3114,7 +3145,7 @@
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
         img.src = url;
-        setTimeout(()=> finish(false), 1200);
+        setTimeout(()=> finish(false), 900);
       });
     }
 
@@ -3140,73 +3171,48 @@
         };
       }).sort((a,b)=>(a.order||0)-(b.order||0) || a.i - b.i);
 
-      const states = new Array(imagePlans.length);
-      let cursor = 0;
-      let emitCursor = 0;
-
-      const flushReady = ()=>{
-        while(emitCursor < states.length && states[emitCursor] !== undefined){
-          const item = states[emitCursor];
-          if(item){
-            items.push(item);
-            onItem?.(item, items.length - 1);
-            imageById.set(item.id, {
-              id: item.id,
-              url: item.dataUrl,
-              talk: item.talk,
-              overlays: item.overlays || [],
-              hidden: !!item.hidden,
-              order: item.order
-            });
-          }
-          emitCursor++;
+      for(const plan of imagePlans){
+        if(plan.hidden && !includeHidden){
+          continue;
         }
-      };
 
-      const workerCount = Math.max(1, Math.min(8, imagePlans.length));
-      const workers = Array.from({ length: workerCount }, async ()=>{
-        while(cursor < imagePlans.length){
-          const idx = cursor++;
-          const plan = imagePlans[idx];
-          if(plan.hidden && !includeHidden){
-            states[idx] = null;
-            flushReady();
-            continue;
+        const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
+        let hitUrl = "";
+        for(const url of candidates){
+          if(await imageUrlExists(url)){
+            hitUrl = url;
+            break;
           }
-
-          const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-          let hitUrl = "";
-          for(const url of candidates){
-            if(await imageUrlExists(url)){
-              hitUrl = url;
-              break;
-            }
-          }
-
-          if(!hitUrl){
-            states[idx] = null;
-            flushReady();
-            continue;
-          }
-
-          states[idx] = {
-            id: plan.id,
-            type: "image",
-            dataUrl: hitUrl,
-            images: [],
-            talk: String(plan.saved.talk || ""),
-            overlays: plan.saved.overlays || [],
-            hidden: plan.hidden,
-            createdAt: 0,
-            order: plan.order,
-            createdBy: "",
-            createdByEmail: ""
-          };
-          flushReady();
         }
-      });
-      await Promise.all(workers);
-      flushReady();
+
+        if(!hitUrl){
+          continue;
+        }
+
+        const item = {
+          id: plan.id,
+          type: "image",
+          dataUrl: hitUrl,
+          images: [],
+          talk: String(plan.saved.talk || ""),
+          overlays: plan.saved.overlays || [],
+          hidden: plan.hidden,
+          createdAt: 0,
+          order: plan.order,
+          createdBy: "",
+          createdByEmail: ""
+        };
+        items.push(item);
+        onItem?.(item, items.length - 1);
+        imageById.set(item.id, {
+          id: item.id,
+          url: item.dataUrl,
+          talk: item.talk,
+          overlays: item.overlays || [],
+          hidden: !!item.hidden,
+          order: item.order
+        });
+      }
 
       const comboItems = [];
       Object.entries(comboMap).forEach(([comboId, combo])=>{
