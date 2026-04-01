@@ -2467,7 +2467,7 @@
       return `
         <div class="comboStrip" style="--comboN:${n}">
           ${parts.map(u=>`
-            <div class="part"><img src="${escapeHtml(u)}" alt=""></div>
+            <div class="part"><img src="${escapeHtml(u)}" alt="" decoding="async"></div>
           `).join("")}
         </div>
       `;
@@ -2576,7 +2576,7 @@
           <div class="slotFrame">
             <div class="comboStrip" aria-label="combo-card" style="--comboN:${n}">
               ${parts.map(u=>`
-                <div class="part"><img src="${escapeHtml(u)}" alt=""></div>
+                <div class="part"><img src="${escapeHtml(u)}" alt="" decoding="async"></div>
               `).join("")}
             </div>
           </div>
@@ -2587,7 +2587,7 @@
       if(item?.dataUrl){
         const fallbacks = Array.isArray(item.fallbackUrls) ? item.fallbackUrls.filter(Boolean) : [];
         const fallbackAttr = escapeHtml(JSON.stringify(fallbacks));
-        slotEl.innerHTML = `<div class="slotFrame"><img src="${escapeHtml(item.dataUrl)}" data-fallback='${fallbackAttr}' alt=""></div>`;
+        slotEl.innerHTML = `<div class="slotFrame"><img src="${escapeHtml(item.dataUrl)}" data-fallback='${fallbackAttr}' alt="" decoding="async"></div>`;
         const imgEl = slotEl.querySelector("img[data-fallback]");
         if(imgEl){
           imgEl.addEventListener("error", ()=>{
@@ -2790,7 +2790,7 @@
       const p = new Promise((resolve)=>{
         const img = new Image();
         img.decoding = "async";
-        img.loading = "eager";
+        img.fetchPriority = "low";
         let done = false;
         const finish = ()=>{
           if(done) return;
@@ -3153,7 +3153,7 @@
       const singleTry = ()=> new Promise((resolve)=>{
         const img = new Image();
         img.decoding = "async";
-        img.loading = "eager";
+        img.fetchPriority = "high";
         let done = false;
         const finish = (ok)=>{
           if(done) return;
@@ -3202,18 +3202,17 @@
       const resolveImagePlan = async (plan)=>{
         if(plan.hidden && !includeHidden) return null;
         const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-        let hitUrl = "";
-        const fallbackUrls = [];
-        for(let i = 0; i < candidates.length; i++){
-          const url = candidates[i];
-          if(!url) continue;
-          const ok = await imageUrlExists(url, 900, 0);
-          if(ok){
-            hitUrl = url;
-            fallbackUrls.push(...candidates.slice(i + 1).filter(Boolean));
+        const checks = await Promise.all(candidates.map((url)=> imageUrlExists(url, 720, 0)));
+        let hitIndex = -1;
+        for(let i = 0; i < checks.length; i++){
+          if(checks[i]){
+            hitIndex = i;
             break;
           }
         }
+        if(hitIndex < 0) return null;
+        const hitUrl = candidates[hitIndex];
+        const fallbackUrls = candidates.slice(hitIndex + 1).filter(Boolean);
         if(!hitUrl) return null;
         return {
           id: plan.id,
@@ -3249,12 +3248,17 @@
       let hitCount = 0;
       let missStreak = 0;
       const maxMissStreakAfterHit = 3;
-      for(const plan of imagePlans){
-        if(hitCount > 0 && missStreak >= maxMissStreakAfterHit){
-          break;
-        }
-        try{
-          const item = await resolveImagePlan(plan);
+      const batchSize = 6;
+      for(let start = 0; start < imagePlans.length; start += batchSize){
+        const batch = imagePlans.slice(start, start + batchSize);
+        const results = await Promise.all(batch.map(async (plan)=>{
+          try{
+            return await resolveImagePlan(plan);
+          }catch(_){
+            return null;
+          }
+        }));
+        for(const item of results){
           if(item){
             hitCount++;
             missStreak = 0;
@@ -3262,9 +3266,12 @@
           }else{
             missStreak++;
           }
-        }catch(_){
-          // 1件失敗しても後続読み込みを継続
-          missStreak++;
+          if(hitCount > 0 && missStreak >= maxMissStreakAfterHit){
+            break;
+          }
+        }
+        if(hitCount > 0 && missStreak >= maxMissStreakAfterHit){
+          break;
         }
       }
 
@@ -3396,13 +3403,13 @@
           const n = Math.max(1, show.length || 1);
           thumbHtml = `
             <div class="thumbCombo" style="--comboN:${n}">
-              ${show.map(u=>`<div class="p"><img src="${escapeHtml(u)}" alt=""></div>`).join("")}
+              ${show.map(u=>`<div class="p"><img src="${escapeHtml(u)}" alt="" loading="lazy" decoding="async"></div>`).join("")}
             </div>
           `;
         }else{
           const overlays = sanitizeOverlays(it.overlays || []);
           thumbHtml = `
-            <img src="${escapeHtml(it.dataUrl)}" alt="">
+            <img src="${escapeHtml(it.dataUrl)}" alt="" loading="lazy" decoding="async">
             <div class="thumbOverlay">${overlaysToHtml(overlays)}</div>
           `;
         }
