@@ -2760,8 +2760,47 @@
       return { firstReady, batchReady };
     }
 
+    const preloadCache = new Map();
+    const imageExistCache = new Map();
+
+    async function preloadImageUrl(url, timeoutMs = 2500){
+      const key = String(url || "");
+      if(!key) return false;
+      if(preloadCache.has(key)) return preloadCache.get(key);
+
+      const task = new Promise((resolve)=>{
+        const img = new Image();
+        let done = false;
+        const finish = (ok)=>{
+          if(done) return;
+          done = true;
+          img.onload = null;
+          img.onerror = null;
+          resolve(!!ok);
+        };
+        const timer = setTimeout(()=> finish(false), Math.max(300, Number(timeoutMs) || 2500));
+        img.onload = ()=>{ clearTimeout(timer); finish(true); };
+        img.onerror = ()=>{ clearTimeout(timer); finish(false); };
+        img.src = key;
+      });
+
+      preloadCache.set(key, task);
+      return task;
+    }
+
     async function preloadItemImage(item){
-      return;
+      if(!item) return false;
+      if(isSpecialItem(item)) return true;
+      if(isComboItem(item)){
+        const urls = (Array.isArray(item.images) ? item.images : []).filter(Boolean).slice(0, 6);
+        if(!urls.length && item.dataUrl) urls.push(item.dataUrl);
+        if(!urls.length) return false;
+        await Promise.all(urls.map((url)=> preloadImageUrl(url)));
+        return true;
+      }
+      if(!item.dataUrl) return false;
+      await preloadImageUrl(item.dataUrl);
+      return true;
     }
 
     function animateTranslateStep({fromX, toX, durationMs, onFrame, token}){
@@ -3103,19 +3142,27 @@
     }
 
     async function imageUrlExists(url){
-      return new Promise((resolve)=>{
+      const key = String(url || "");
+      if(!key) return false;
+      if(imageExistCache.has(key)) return imageExistCache.get(key);
+
+      const task = new Promise((resolve)=>{
         const img = new Image();
         let done = false;
         const finish = (ok)=>{
           if(done) return;
           done = true;
+          img.onload = null;
+          img.onerror = null;
           resolve(!!ok);
         };
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
-        img.src = url;
+        img.src = key;
         setTimeout(()=> finish(false), 1200);
       });
+      imageExistCache.set(key, task);
+      return task;
     }
 
     async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false, options = {}){
