@@ -3196,7 +3196,19 @@
           }
 
           const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-          const hitUrl = candidates[0] || "";
+          let hitUrl = "";
+          const fallbackUrls = [];
+          for(let c = 0; c < candidates.length; c++){
+            const url = candidates[c];
+            if(!url) continue;
+            if(await imageUrlExists(url)){
+              hitUrl = url;
+              if(c + 1 < candidates.length){
+                fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
+              }
+              break;
+            }
+          }
           if(!hitUrl){
             states[idx] = null;
             flushReady();
@@ -3207,7 +3219,7 @@
             id: plan.id,
             type: "image",
             dataUrl: hitUrl,
-            fallbackUrls: candidates.slice(1),
+            fallbackUrls,
             images: [],
             talk: String(plan.saved.talk || ""),
             overlays: plan.saved.overlays || [],
