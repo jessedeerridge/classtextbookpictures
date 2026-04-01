@@ -1737,6 +1737,10 @@
         : `${lessonPath(groupKey, lessonKey)}/branches/${pageKey}/meta`;
     }
 
+    function pageImageMetaPath(groupKey, lessonKey, pageKey){
+      return `${pageItemsPath(groupKey, lessonKey, pageKey)}/_images`;
+    }
+
     const $ = (s)=>document.querySelector(s);
 
     // header
@@ -2220,7 +2224,15 @@
       shuffleToken++;
 
       if(!silent) saveLastLesson(currentGroupKey, key, DEFAULT_PAGE_KEY);
-      loadLessonItemsForViewer(currentGroupKey, key, DEFAULT_PAGE_KEY);
+      loadLessonPages(currentGroupKey, key).then((pages)=>{
+        lessonPages = pages;
+        currentPageKey = "";
+        currentPageLabel = "";
+        renderStageEmpty("ページ分岐を選択してください。", "", false);
+        renderStageBranchBar();
+      }).catch((err)=>{
+        renderStageEmpty("読み込みエラー", String(err?.message || err || ""), false);
+      });
     }
 
     function saveLastLesson(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
@@ -2731,36 +2743,7 @@
     }
 
     async function preloadItemImage(item){
-      try{
-        if(!item) return;
-        if(isSpecialItem(item)) return;
-
-        if(isComboItem(item)){
-          const imgs = Array.isArray(item.images) ? item.images.filter(Boolean) : [];
-          const targets = imgs.slice(0,2);
-          for(const u of targets){
-            const img = new Image();
-            img.decoding = "async";
-            img.src = u;
-            if(img.decode){
-              await img.decode();
-            }else{
-              await new Promise((res)=>{ img.onload = ()=>res(); img.onerror = ()=>res(); });
-            }
-          }
-          return;
-        }
-
-        if(!item?.dataUrl) return;
-        const img = new Image();
-        img.decoding = "async";
-        img.src = item.dataUrl;
-        if(img.decode){
-          await img.decode();
-        }else{
-          await new Promise((res)=>{ img.onload = ()=>res(); img.onerror = ()=>res(); });
-        }
-      }catch(_){}
+      return;
     }
 
     function animateTranslateStep({fromX, toX, durationMs, onFrame, token}){
@@ -3095,6 +3078,85 @@
       syncPageLabelInput();
     }
 
+    function sanitizeId(raw){
+      return String(raw || "").replace(/[^a-zA-Z0-9_-]+/g, "_");
+    }
+
+    function buildClassNameFromSelection(groupKey, lessonKey){
+      const group = getGroupByKey(groupKey);
+      const lesson = groupLessons.find(x => x.key === lessonKey);
+      return `${group?.label || ""}${lesson?.label || lessonKey || ""}`.trim();
+    }
+
+    function buildImageCandidates(groupKey, lessonKey, pageLabel, index){
+      const className = buildClassNameFromSelection(groupKey, lessonKey);
+      const safePageLabel = String(pageLabel || "").trim();
+      const base = `${className}${safePageLabel}の画像(${index})`;
+      const exts = ["jpg","jpeg","png","webp"];
+      const urls = [];
+      for(const ext of exts){
+        urls.push(`${className}/${base}.${ext}`);
+        urls.push(`${base}.${ext}`);
+      }
+      return urls;
+    }
+
+    async function imageUrlExists(url){
+      return new Promise((resolve)=>{
+        const img = new Image();
+        let done = false;
+        const finish = (ok)=>{
+          if(done) return;
+          done = true;
+          resolve(!!ok);
+        };
+        img.onload = ()=> finish(true);
+        img.onerror = ()=> finish(false);
+        img.src = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
+        setTimeout(()=> finish(false), 2000);
+      });
+    }
+
+    async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false){
+      const pageLabel = (lessonPages.find(p => p.key === pageKey)?.label) || "";
+      const metaSnap = await db.ref(pageImageMetaPath(groupKey, lessonKey, pageKey)).get();
+      const metaMap = metaSnap.val() || {};
+      const items = [];
+
+      for(let i=1; i<=40; i++){
+        const id = `img_${sanitizeId(groupKey)}_${sanitizeId(lessonKey)}_${sanitizeId(pageKey)}_${i}`;
+        const candidates = buildImageCandidates(groupKey, lessonKey, pageLabel, i);
+        let hitUrl = "";
+        for(const url of candidates){
+          if(await imageUrlExists(url)){
+            hitUrl = url;
+            break;
+          }
+        }
+        if(!hitUrl) continue;
+
+        const saved = metaMap[id] || {};
+        const hidden = !!saved.hidden;
+        if(hidden && !includeHidden) continue;
+        items.push({
+          id,
+          type: "image",
+          dataUrl: hitUrl,
+          images: [],
+          talk: String(saved.talk || ""),
+          overlays: saved.overlays || [],
+          hidden,
+          createdAt: Number(saved.createdAt || 0) || 0,
+          order: Number(saved.order || (i * 1000)) || (i * 1000),
+          createdBy: saved.createdBy || "",
+          createdByEmail: saved.createdByEmail || ""
+        });
+      }
+
+      items.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+      return items;
+    }
+
     async function loadLessonItemsForViewer(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
       const requestId = ++lessonLoadRequestId;
       const isStale = ()=> requestId !== lessonLoadRequestId;
@@ -3113,66 +3175,8 @@
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
-        const ref = db.ref(pageItemsPath(currentGroupKey, lessonKey, currentPageKey));
-        const snap = await ref.get();
+        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey, false);
         if(isStale()) return;
-        const arr = [];
-        snap.forEach(child=>{
-          const v = child.val() || {};
-          const type = String(v.type || (v.dataUrl ? "image" : "image"));
-
-          if(type === "special"){
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images: [],
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(type === "combo"){
-            const images = Array.isArray(v.images) ? v.images : [];
-            if(images.length){
-              arr.push({
-                id: child.key,
-                type,
-                dataUrl: "",
-                images,
-                talk: v.talk || "",
-                overlays: [],
-                createdAt: Number(v.createdAt || 0) || 0,
-                order: Number(v.order || v.createdAt || 0) || 0,
-                createdBy: v.createdBy || "",
-                createdByEmail: v.createdByEmail || ""
-              });
-            }
-            return;
-          }
-
-          if(v.dataUrl){
-            arr.push({
-              id: child.key,
-              type: "image",
-              dataUrl: v.dataUrl || "",
-              images: [],
-              talk: v.talk || "",
-              overlays: v.overlays || [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-          }
-        });
-
-        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
         if(isStale()) return;
         lessonItems = arr;
         currentItem = null;
@@ -3190,27 +3194,8 @@
 
         const first = lessonItems[0];
         if(isStale()) return;
-        const initialPreload = preloadLessonFirstBatch(lessonItems, {
-          count: 3,
-          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey
-        });
-        await initialPreload.batchReady;
-        if(isStale()) return;
-        stageIndexVisibleCount = Math.min(3, lessonItems.length);
+        stageIndexVisibleCount = lessonItems.length;
         showOneItemInstant(first);
-        if(isStale()) return;
-        warmupLessonImagesStaged(lessonItems, {
-          eagerCount: 0,
-          startIndex: 3,
-          isStillValid: ()=> !isStale() && currentGroupKey === groupKey && currentLessonKey === lessonKey && currentPageKey === pageKey,
-          onItemLoaded: (absoluteIndex)=>{
-            if(isStale()) return;
-            const nextVisible = Math.max(stageIndexVisibleCount, absoluteIndex + 1);
-            if(nextVisible === stageIndexVisibleCount) return;
-            stageIndexVisibleCount = nextVisible;
-            renderStageIndexBar();
-          }
-        });
       }catch(err){
         if(isStale()) return;
         renderStageEmpty("読み込みエラー");
@@ -3231,7 +3216,7 @@
     function renderAdminList(items){
       lastRendered = items || [];
       listEl.innerHTML = lastRendered.map(it => {
-        const canDelete = isAdminSignedIn() && it.createdBy === currentUser.uid;
+        const canDelete = false;
         const isSp = (it.type === "special");
         const isCombo = (it.type === "combo");
         const overlayCount = Array.isArray(it.overlays) ? it.overlays.length : 0;
@@ -3260,7 +3245,7 @@
           ? `SPECIAL / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`
           : isCombo
             ? `COMBO:${escapeHtml(String((it.images||[]).length))} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`
-            : `文字:${overlayCount} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`;
+            : `文字:${overlayCount} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))} / ${it.hidden ? "非表示" : "表示"}`;
 
         const selClass = selectedIds.has(it.id) ? "selected" : "";
         const selModeClass = selectMode ? "selMode" : "";
@@ -3283,6 +3268,7 @@
                 <span>会話：${escapeHtml(talkPlainPreview(it.talk))}</span>
               </div>
               <div class="actions">
+                <button class="btn small ${it.hidden ? "" : "primary"}" data-action="toggle-hidden">${it.hidden ? "表示にする" : "非表示にする"}</button>
                 ${canDelete ? `<button class="btn small danger" data-action="del">削除</button>` : ""}
               </div>
             </div>
@@ -3308,64 +3294,8 @@
         const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
 
         setStatus2("読み込み中...", null);
-
-        const ref = db.ref(pageItemsPath(groupKey, lessonKey, pageKey));
-        const snap = await ref.get();
-        const arr = [];
-        snap.forEach(child=>{
-          const v = child.val() || {};
-          const type = String(v.type || (v.dataUrl ? "image" : "image"));
-
-          if(type === "special"){
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images: [],
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(type === "combo"){
-            const images = Array.isArray(v.images) ? v.images : [];
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images,
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(v.dataUrl){
-            arr.push({
-              id: child.key,
-              type: "image",
-              dataUrl: v.dataUrl || "",
-              images: [],
-              talk: v.talk || "",
-              overlays: v.overlays || [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-          }
-        });
-
-        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        lessonPages = await loadLessonPages(groupKey, lessonKey);
+        const arr = await discoverPageImageItems(groupKey, lessonKey, pageKey, true);
         renderAdminList(arr);
 
         setStatus2(`OK（${arr.length}件）`, "ok");
@@ -3572,86 +3502,7 @@
     // =========================
     async function uploadImagesBatch(){
       try{
-        if(!db) throw new Error("Firebaseが初期化できていません。");
-        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
-
-        const lessonKey = adminLesson.value;
-        const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
-        const talk = (fTalkQuick.value || "").trim();
-
-        if(uploadQueue.length === 0){
-          if(fFile.files && fFile.files.length){
-            addFilesToQueue(fFile.files);
-          }
-        }
-        if(uploadQueue.length === 0){
-          throw new Error("画像ファイルを追加してください（複数可）。");
-        }
-
-        const targets = uploadQueue.filter(it => !it.error);
-        if(targets.length === 0){
-          throw new Error("アップロードできる画像がありません（サイズなどを確認）。");
-        }
-
-        setStatus(`アップロード中...（${targets.length}件）`, null);
-
-        let okCount = 0;
-        for(const it of targets){
-          try{
-            setQueueProgress(it.id, 5);
-
-            const dataUrl = await readFileAsDataURL(it.file);
-
-            const approxBytes = Math.floor((dataUrl.length || 0) * 0.75);
-            const maxPayloadBytes = 4.5 * 1024 * 1024;
-            if(approxBytes > maxPayloadBytes){
-              throw new Error("dataURLが大きすぎます（画像を圧縮してください）。");
-            }
-
-            setQueueProgress(it.id, 45);
-
-            const payload = {
-              type: "image",
-              talk,
-              dataUrl,
-              overlays: [],
-              createdAt: firebase.database.ServerValue.TIMESTAMP,
-              order: firebase.database.ServerValue.TIMESTAMP,
-              createdBy: currentUser.uid,
-              createdByEmail: currentUser.email || ""
-            };
-
-            const ref = db.ref(pageItemsPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
-            await ref.set(payload);
-
-            setQueueProgress(it.id, 100);
-            okCount++;
-
-          }catch(err){
-            setQueueError(it.id, err?.message || String(err||""));
-            setQueueProgress(it.id, 0);
-          }
-        }
-
-        fFile.value = "";
-
-        uploadQueue = uploadQueue.filter(it => {
-          const done = (it.progress === 100);
-          if(done){
-            try{ URL.revokeObjectURL(it.previewUrl); }catch(_){}
-          }
-          return !done;
-        });
-        renderQueue();
-
-        if(okCount > 0){
-          setStatus(`アップロード完了 ✅（成功 ${okCount}件）`, "ok");
-          setTimeout(()=>setStatus("", null), 900);
-          if(adminLesson.value === lessonKey) loadAdminList();
-        }else{
-          throw new Error("すべて失敗しました（サイズ/DBルール/ネットワークを確認）。");
-        }
-
+        throw new Error("DBへの画像アップロードは廃止しました。GitHub内の画像ファイルを参照してください。");
       }catch(err){
         setStatus(err?.message || String(err || ""), "err");
       }
@@ -3717,6 +3568,26 @@
         setStatus2("削除しました ✅", "ok");
         setTimeout(()=>setStatus2("", null), 900);
         loadAdminList();
+      }catch(err){
+        setStatus2(err?.message || String(err || ""), "err");
+      }
+    }
+
+    async function toggleItemHidden(groupKey, lessonKey, pageKey, id){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
+        const hit = lastRendered.find(x => x.id === id);
+        if(!hit) throw new Error("対象が見つかりません。");
+        const nextHidden = !hit.hidden;
+        await db.ref(`${pageImageMetaPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${id}`).update({
+          hidden: nextHidden,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP,
+          updatedBy: currentUser.uid
+        });
+        await loadAdminList();
+        setStatus2(nextHidden ? "非表示にしました ✅" : "表示に戻しました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
       }catch(err){
         setStatus2(err?.message || String(err || ""), "err");
       }
@@ -4267,11 +4138,6 @@
         editErr.classList.add("show");
         return;
       }
-      if(hit.createdBy !== currentUser.uid){
-        editErr.textContent = "自分が作成したカードだけ編集できます。";
-        editErr.classList.add("show");
-        return;
-      }
 
       const isSp = (hit.type === "special");
       const isCombo = (hit.type === "combo");
@@ -4332,16 +4198,14 @@
         const overlaysToSave = (editTarget.isSpecial || editTarget.isCombo) ? [] : sanitizeOverlays(editOverlays);
 
         const { lessonKey, id } = editTarget;
-        const hit = lastRendered.find(x => x.id === id);
-        if(!hit) throw new Error("対象が見つかりません。");
-        if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ編集できます。");
-
         const updates = {
           talk: editTalkMarkers,
-          overlays: overlaysToSave
+          overlays: overlaysToSave,
+          updatedAt: firebase.database.ServerValue.TIMESTAMP,
+          updatedBy: currentUser.uid
         };
 
-        await db.ref(`${pageItemsPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
+        await db.ref(`${pageImageMetaPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
 
         showEditModal(false);
         editTarget = null;
@@ -4375,7 +4239,7 @@
       items.forEach((it, idx)=>{
         const ord = (idx + 1) * base;
         it.order = ord;
-        updates[`${pageItemsPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
+        updates[`${pageImageMetaPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
       });
       return db.ref().update(updates);
     }
@@ -4656,12 +4520,23 @@
       }
 
       const lessonKey = adminLesson.value;
+      const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
+
+      const toggleBtn = e.target.closest('[data-action="toggle-hidden"]');
+      if(toggleBtn){
+        const card = toggleBtn.closest(".card");
+        const id = card?.getAttribute("data-id") || "";
+        if(id) toggleItemHidden(adminGroup.value, lessonKey, pageKey, id);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
 
       const delBtn = e.target.closest('[data-action="del"]');
       if(delBtn){
         const card = delBtn.closest(".card");
         const id = card?.getAttribute("data-id") || "";
-        if(id) deleteItem(adminGroup.value, lessonKey, adminPage.value || DEFAULT_PAGE_KEY, id);
+        if(id) deleteItem(adminGroup.value, lessonKey, pageKey, id);
         e.preventDefault();
         e.stopPropagation();
         return;
