@@ -3140,42 +3140,73 @@
         };
       }).sort((a,b)=>(a.order||0)-(b.order||0) || a.i - b.i);
 
-      for(const plan of imagePlans){
-        if(plan.hidden && !includeHidden) continue;
-        const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-        let hitUrl = "";
-        for(const url of candidates){
-          if(await imageUrlExists(url)){
-            hitUrl = url;
-            break;
-          }
-        }
-        if(!hitUrl) continue;
+      const states = new Array(imagePlans.length);
+      let cursor = 0;
+      let emitCursor = 0;
 
-        const item = {
-          id: plan.id,
-          type: "image",
-          dataUrl: hitUrl,
-          images: [],
-          talk: String(plan.saved.talk || ""),
-          overlays: plan.saved.overlays || [],
-          hidden: plan.hidden,
-          createdAt: 0,
-          order: plan.order,
-          createdBy: "",
-          createdByEmail: ""
-        };
-        items.push(item);
-        onItem?.(item, items.length - 1);
-        imageById.set(item.id, {
-          id: item.id,
-          url: item.dataUrl,
-          talk: item.talk,
-          overlays: item.overlays || [],
-          hidden: !!item.hidden,
-          order: item.order
-        });
-      }
+      const flushReady = ()=>{
+        while(emitCursor < states.length && states[emitCursor] !== undefined){
+          const item = states[emitCursor];
+          if(item){
+            items.push(item);
+            onItem?.(item, items.length - 1);
+            imageById.set(item.id, {
+              id: item.id,
+              url: item.dataUrl,
+              talk: item.talk,
+              overlays: item.overlays || [],
+              hidden: !!item.hidden,
+              order: item.order
+            });
+          }
+          emitCursor++;
+        }
+      };
+
+      const workerCount = Math.max(1, Math.min(8, imagePlans.length));
+      const workers = Array.from({ length: workerCount }, async ()=>{
+        while(cursor < imagePlans.length){
+          const idx = cursor++;
+          const plan = imagePlans[idx];
+          if(plan.hidden && !includeHidden){
+            states[idx] = null;
+            flushReady();
+            continue;
+          }
+
+          const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
+          let hitUrl = "";
+          for(const url of candidates){
+            if(await imageUrlExists(url)){
+              hitUrl = url;
+              break;
+            }
+          }
+
+          if(!hitUrl){
+            states[idx] = null;
+            flushReady();
+            continue;
+          }
+
+          states[idx] = {
+            id: plan.id,
+            type: "image",
+            dataUrl: hitUrl,
+            images: [],
+            talk: String(plan.saved.talk || ""),
+            overlays: plan.saved.overlays || [],
+            hidden: plan.hidden,
+            createdAt: 0,
+            order: plan.order,
+            createdBy: "",
+            createdByEmail: ""
+          };
+          flushReady();
+        }
+      });
+      await Promise.all(workers);
+      flushReady();
 
       const comboItems = [];
       Object.entries(comboMap).forEach(([comboId, combo])=>{
