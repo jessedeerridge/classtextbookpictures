@@ -3141,7 +3141,7 @@
       ];
     }
 
-    async function imageUrlExists(url){
+    async function imageUrlExists(url, timeoutMs = 2200){
       return new Promise((resolve)=>{
         const img = new Image();
         let done = false;
@@ -3153,7 +3153,7 @@
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
         img.src = url;
-        setTimeout(()=> finish(false), 1200);
+        setTimeout(()=> finish(false), Math.max(300, Number(timeoutMs) || 2200));
       });
     }
 
@@ -3203,19 +3203,18 @@
         }
       };
 
-      const loadImagePlan = async (plan)=>{
+      const loadImagePlan = async (plan, options = {})=>{
         if(plan.hidden && !includeHidden) return null;
         const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
+        const probeTimeoutMs = Math.max(300, Number(options.probeTimeoutMs) || 2200);
         let hitUrl = "";
         const fallbackUrls = [];
-        for(let c = 0; c < candidates.length; c++){
-          const url = candidates[c];
-          if(!url) continue;
-          if(await imageUrlExists(url)){
-            hitUrl = url;
-            if(c + 1 < candidates.length){
-              fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
-            }
+        const checks = candidates.map((url)=> url ? imageUrlExists(url, probeTimeoutMs) : Promise.resolve(false));
+        const results = await Promise.all(checks);
+        for(let c = 0; c < results.length; c++){
+          if(results[c]){
+            hitUrl = candidates[c] || "";
+            fallbackUrls.push(...candidates.filter((_, idx)=> idx !== c).filter(Boolean));
             break;
           }
         }
@@ -3238,11 +3237,11 @@
 
       const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
       const eagerPlans = imagePlans.slice(0, eagerCount);
-      for(let i = 0; i < eagerPlans.length; i++){
-        const plan = eagerPlans[i];
-        states[i] = await loadImagePlan(plan);
+      const eagerTasks = eagerPlans.map((plan, idx)=> (async ()=>{
+        states[idx] = await loadImagePlan(plan, { probeTimeoutMs: 2800 });
         flushReady();
-      }
+      })());
+      await Promise.all(eagerTasks);
       cursor = eagerPlans.length;
 
       const workerCount = Math.max(1, Math.min(4, imagePlans.length - cursor));
