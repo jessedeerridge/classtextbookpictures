@@ -2730,7 +2730,7 @@
 
     function warmupLessonImagesStaged(items, options = {}){
       const targets = Array.isArray(items) ? items.filter(Boolean) : [];
-      const eagerCount = Math.max(0, Number(options.eagerCount ?? 3) || 3);
+      const eagerCount = Math.max(0, Number(options.eagerCount ?? 1) || 1);
       const startIndex = Math.max(0, Number(options.startIndex ?? 0) || 0);
       const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
       const onItemLoaded = typeof options.onItemLoaded === "function" ? options.onItemLoaded : null;
@@ -2752,14 +2752,14 @@
           if(!isStillValid()) return;
           await preloadItemImage(item);
           onItemLoaded?.(startIndex + eager.length + i, item);
-          await waitMs(24);
+          await waitMs(120);
         }
       });
     }
 
     function preloadLessonFirstBatch(items, options = {}){
       const targets = Array.isArray(items) ? items.filter(Boolean) : [];
-      const count = Math.max(0, Number(options.count ?? 3) || 3);
+      const count = Math.max(0, Number(options.count ?? 1) || 1);
       const isStillValid = typeof options.isStillValid === "function" ? options.isStillValid : (()=>true);
       const firstBatch = targets.slice(0, count);
       if(!firstBatch.length){
@@ -3202,13 +3202,17 @@
       const resolveImagePlan = async (plan)=>{
         if(plan.hidden && !includeHidden) return null;
         const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-        const checks = await Promise.all(candidates.map((url)=> imageUrlExists(url, 720, 0)));
         let hitIndex = -1;
-        for(let i = 0; i < checks.length; i++){
-          if(checks[i]){
+        for(let i = 0; i < candidates.length; i++){
+          const url = candidates[i];
+          if(!url) continue;
+          const ok = await imageUrlExists(url, 1400, 0);
+          if(ok){
             hitIndex = i;
             break;
           }
+          // Firewall/プロキシ配下で連続失敗を起こしにくくするため、存在確認は間隔を空けて直列実行
+          await waitMs(90);
         }
         if(hitIndex < 0) return null;
         const hitUrl = candidates[hitIndex];
@@ -3248,17 +3252,9 @@
       let hitCount = 0;
       let missStreak = 0;
       const maxMissStreakAfterHit = 3;
-      const batchSize = 6;
-      for(let start = 0; start < imagePlans.length; start += batchSize){
-        const batch = imagePlans.slice(start, start + batchSize);
-        const results = await Promise.all(batch.map(async (plan)=>{
-          try{
-            return await resolveImagePlan(plan);
-          }catch(_){
-            return null;
-          }
-        }));
-        for(const item of results){
+      for(const plan of imagePlans){
+        try{
+          const item = await resolveImagePlan(plan);
           if(item){
             hitCount++;
             missStreak = 0;
@@ -3266,9 +3262,8 @@
           }else{
             missStreak++;
           }
-          if(hitCount > 0 && missStreak >= maxMissStreakAfterHit){
-            break;
-          }
+        }catch(_){
+          missStreak++;
         }
         if(hitCount > 0 && missStreak >= maxMissStreakAfterHit){
           break;
