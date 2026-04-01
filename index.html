@@ -1428,31 +1428,31 @@
 
       <section class="panel">
         <div class="panelHead">
-          <div class="panelTitle">画像カード登録</div>
+          <div class="panelTitle">画像カード（GitHub参照）</div>
           <div class="status" id="status"></div>
         </div>
 
         <div class="panelBody">
 
           <div class="field">
-            <div class="label">画像カード：会話文（長押し表示）</div>
+            <div class="label">GitHub画像カード：会話文（長押し表示）</div>
             <input class="input" id="fTalkQuick" placeholder="（任意）あとで一覧のカードをクリックして編集できます" />
-            <div class="hint">ここは簡易入力（1行）。改行・青線/緑線/黒線は、登録後にカードクリックで編集してください。</div>
+            <div class="hint">会話文や文字オーバーレイは、一覧カードをクリックして保存できます（画像自体はGitHubから読み込み）。</div>
           </div>
 
           <div class="field">
-            <div class="label">画像ファイル（複数OK）</div>
+            <div class="label">画像ファイル（参照専用）</div>
             <input class="input" id="fFile" type="file" accept="image/*" multiple />
-            <div class="hint">複数選択OK。ドラッグ&ドロップでも追加できます。</div>
+            <div class="hint">アップロードは無効です。GitHub の <code>page-images/{ページキー}/</code> に画像を配置してください。</div>
           </div>
 
-          <button class="btn primary" id="btnUpload">まとめてアップロード</button>
+          <button class="btn primary" id="btnUpload">GitHub配置ガイド</button>
 
           <div class="field" style="grid-column: 1 / -1;">
             <div class="dropZone" id="dropZone">
-              <strong>ここに画像をドラッグ＆ドロップ（複数同時OK）</strong>
-              <div class="small">※ブラウザの「ファイル」からもOK。Storage不使用（DBにdataURL保存）。</div>
-              <div class="small">※目安：1枚 2MB以下推奨（大きいとDB制限に当たりやすい）。</div>
+              <strong>GitHub の page-images/{ページキー}/ 配下の画像を自動読込します</strong>
+              <div class="small">※この画面では画像を保存しません（DBには表示設定のみ保存）。</div>
+              <div class="small">※分岐キーと同じフォルダ名（例: <code>page-images/main/</code>）を使ってください。</div>
             </div>
           </div>
         </div>
@@ -1735,6 +1735,51 @@
       return pageKey === DEFAULT_PAGE_KEY
         ? `${lessonPath(groupKey, lessonKey)}/meta`
         : `${lessonPath(groupKey, lessonKey)}/branches/${pageKey}/meta`;
+    }
+
+    function pageImageMetaPath(groupKey, lessonKey, pageKey){
+      return `${pageMetaPath(groupKey, lessonKey, pageKey)}/images`;
+    }
+
+    function detectGitHubRepo(){
+      const host = window.location.hostname || "";
+      const segs = (window.location.pathname || "").split("/").filter(Boolean);
+      if(host.endsWith(".github.io") && segs.length){
+        const owner = host.replace(/\.github\.io$/, "");
+        return `${owner}/${segs[0]}`;
+      }
+      const guess = (document.querySelector('meta[name="github-repo"]')?.content || "").trim();
+      return guess;
+    }
+
+    const GITHUB_REPO = detectGitHubRepo();
+    const GITHUB_BRANCH = "main";
+    const GITHUB_IMAGE_ROOT = "page-images";
+
+    function githubDirPath(pageKey){
+      return `${GITHUB_IMAGE_ROOT}/${pageKey}`;
+    }
+
+    async function fetchGitHubPageImages(pageKey){
+      if(!GITHUB_REPO) throw new Error("GitHubリポジトリを特定できません。meta[name=github-repo] を設定してください。");
+      const dir = githubDirPath(pageKey);
+      const safeDir = dir.split("/").map(seg=>encodeURIComponent(seg)).join("/");
+      const api = `https://api.github.com/repos/${GITHUB_REPO}/contents/${safeDir}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
+      const res = await fetch(api, { headers: { "Accept": "application/vnd.github+json" } });
+      if(res.status === 404) return [];
+      if(!res.ok) throw new Error(`GitHub画像の取得に失敗しました (${res.status})`);
+      const items = await res.json();
+      const files = Array.isArray(items) ? items : [];
+      return files
+        .filter(it => it && it.type === "file" && /\.(png|jpe?g|webp|gif|avif|svg)$/i.test(String(it.name || "")))
+        .map(it => ({
+          id: `gh:${it.name}`,
+          type: "image",
+          fileName: String(it.name || ""),
+          dataUrl: String(it.download_url || ""),
+          images: [],
+          source: "github"
+        }));
     }
 
     const $ = (s)=>document.querySelector(s);
@@ -3095,6 +3140,53 @@
       syncPageLabelInput();
     }
 
+    async function buildPageItems(groupKey, lessonKey, pageKey){
+      const [ghItems, snapItems, snapMeta] = await Promise.all([
+        fetchGitHubPageImages(pageKey),
+        db.ref(pageItemsPath(groupKey, lessonKey, pageKey)).get(),
+        db.ref(pageImageMetaPath(groupKey, lessonKey, pageKey)).get()
+      ]);
+
+      const metaMap = snapMeta.val() || {};
+      const arr = [];
+
+      for(const gh of ghItems){
+        const meta = metaMap[gh.fileName] || {};
+        if(meta.hidden) continue;
+        arr.push({
+          ...gh,
+          talk: meta.talk || "",
+          overlays: meta.overlays || [],
+          createdAt: Number(meta.createdAt || 0) || 0,
+          order: Number(meta.order || 0) || 0,
+          createdBy: meta.createdBy || "",
+          createdByEmail: meta.createdByEmail || ""
+        });
+      }
+
+      snapItems.forEach(child=>{
+        const v = child.val() || {};
+        const type = String(v.type || "");
+        if(type !== "special" && type !== "combo") return;
+
+        arr.push({
+          id: child.key,
+          type,
+          dataUrl: "",
+          images: type === "combo" ? (Array.isArray(v.images) ? v.images : []) : [],
+          talk: v.talk || "",
+          overlays: [],
+          createdAt: Number(v.createdAt || 0) || 0,
+          order: Number(v.order || v.createdAt || 0) || 0,
+          createdBy: v.createdBy || "",
+          createdByEmail: v.createdByEmail || ""
+        });
+      });
+
+      arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+      return arr;
+    }
+
     async function loadLessonItemsForViewer(groupKey, lessonKey, pageKey = DEFAULT_PAGE_KEY){
       const requestId = ++lessonLoadRequestId;
       const isStale = ()=> requestId !== lessonLoadRequestId;
@@ -3113,66 +3205,7 @@
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
-        const ref = db.ref(pageItemsPath(currentGroupKey, lessonKey, currentPageKey));
-        const snap = await ref.get();
-        if(isStale()) return;
-        const arr = [];
-        snap.forEach(child=>{
-          const v = child.val() || {};
-          const type = String(v.type || (v.dataUrl ? "image" : "image"));
-
-          if(type === "special"){
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images: [],
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(type === "combo"){
-            const images = Array.isArray(v.images) ? v.images : [];
-            if(images.length){
-              arr.push({
-                id: child.key,
-                type,
-                dataUrl: "",
-                images,
-                talk: v.talk || "",
-                overlays: [],
-                createdAt: Number(v.createdAt || 0) || 0,
-                order: Number(v.order || v.createdAt || 0) || 0,
-                createdBy: v.createdBy || "",
-                createdByEmail: v.createdByEmail || ""
-              });
-            }
-            return;
-          }
-
-          if(v.dataUrl){
-            arr.push({
-              id: child.key,
-              type: "image",
-              dataUrl: v.dataUrl || "",
-              images: [],
-              talk: v.talk || "",
-              overlays: v.overlays || [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-          }
-        });
-
-        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        const arr = await buildPageItems(currentGroupKey, lessonKey, currentPageKey);
         if(isStale()) return;
         lessonItems = arr;
         currentItem = null;
@@ -3183,7 +3216,7 @@
 
         if(!lessonItems.length){
           renderStageEmpty("このページにはカードがありません");
-          placeholder.querySelector(".s").textContent = "管理画面でこの分岐ページにカードを登録してください。";
+          placeholder.querySelector(".s").textContent = "GitHub の page-images/{ページキー}/ に画像を置くか、管理画面でスペシャルカードを追加してください。";
           renderStageBranchBar();
           return;
         }
@@ -3231,7 +3264,7 @@
     function renderAdminList(items){
       lastRendered = items || [];
       listEl.innerHTML = lastRendered.map(it => {
-        const canDelete = isAdminSignedIn() && it.createdBy === currentUser.uid;
+        const canDelete = isAdminSignedIn() && it.source !== "github" && it.createdBy === currentUser.uid;
         const isSp = (it.type === "special");
         const isCombo = (it.type === "combo");
         const overlayCount = Array.isArray(it.overlays) ? it.overlays.length : 0;
@@ -3308,64 +3341,7 @@
         const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
 
         setStatus2("読み込み中...", null);
-
-        const ref = db.ref(pageItemsPath(groupKey, lessonKey, pageKey));
-        const snap = await ref.get();
-        const arr = [];
-        snap.forEach(child=>{
-          const v = child.val() || {};
-          const type = String(v.type || (v.dataUrl ? "image" : "image"));
-
-          if(type === "special"){
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images: [],
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(type === "combo"){
-            const images = Array.isArray(v.images) ? v.images : [];
-            arr.push({
-              id: child.key,
-              type,
-              dataUrl: "",
-              images,
-              talk: v.talk || "",
-              overlays: [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-            return;
-          }
-
-          if(v.dataUrl){
-            arr.push({
-              id: child.key,
-              type: "image",
-              dataUrl: v.dataUrl || "",
-              images: [],
-              talk: v.talk || "",
-              overlays: v.overlays || [],
-              createdAt: Number(v.createdAt || 0) || 0,
-              order: Number(v.order || v.createdAt || 0) || 0,
-              createdBy: v.createdBy || "",
-              createdByEmail: v.createdByEmail || ""
-            });
-          }
-        });
-
-        arr.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+        const arr = await buildPageItems(groupKey, lessonKey, pageKey);
         renderAdminList(arr);
 
         setStatus2(`OK（${arr.length}件）`, "ok");
@@ -3571,91 +3547,10 @@
     // Admin: upload images
     // =========================
     async function uploadImagesBatch(){
-      try{
-        if(!db) throw new Error("Firebaseが初期化できていません。");
-        if(!isAdminSignedIn()) throw new Error("ログインしてください。");
-
-        const lessonKey = adminLesson.value;
-        const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
-        const talk = (fTalkQuick.value || "").trim();
-
-        if(uploadQueue.length === 0){
-          if(fFile.files && fFile.files.length){
-            addFilesToQueue(fFile.files);
-          }
-        }
-        if(uploadQueue.length === 0){
-          throw new Error("画像ファイルを追加してください（複数可）。");
-        }
-
-        const targets = uploadQueue.filter(it => !it.error);
-        if(targets.length === 0){
-          throw new Error("アップロードできる画像がありません（サイズなどを確認）。");
-        }
-
-        setStatus(`アップロード中...（${targets.length}件）`, null);
-
-        let okCount = 0;
-        for(const it of targets){
-          try{
-            setQueueProgress(it.id, 5);
-
-            const dataUrl = await readFileAsDataURL(it.file);
-
-            const approxBytes = Math.floor((dataUrl.length || 0) * 0.75);
-            const maxPayloadBytes = 4.5 * 1024 * 1024;
-            if(approxBytes > maxPayloadBytes){
-              throw new Error("dataURLが大きすぎます（画像を圧縮してください）。");
-            }
-
-            setQueueProgress(it.id, 45);
-
-            const payload = {
-              type: "image",
-              talk,
-              dataUrl,
-              overlays: [],
-              createdAt: firebase.database.ServerValue.TIMESTAMP,
-              order: firebase.database.ServerValue.TIMESTAMP,
-              createdBy: currentUser.uid,
-              createdByEmail: currentUser.email || ""
-            };
-
-            const ref = db.ref(pageItemsPath(adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)).push();
-            await ref.set(payload);
-
-            setQueueProgress(it.id, 100);
-            okCount++;
-
-          }catch(err){
-            setQueueError(it.id, err?.message || String(err||""));
-            setQueueProgress(it.id, 0);
-          }
-        }
-
-        fFile.value = "";
-
-        uploadQueue = uploadQueue.filter(it => {
-          const done = (it.progress === 100);
-          if(done){
-            try{ URL.revokeObjectURL(it.previewUrl); }catch(_){}
-          }
-          return !done;
-        });
-        renderQueue();
-
-        if(okCount > 0){
-          setStatus(`アップロード完了 ✅（成功 ${okCount}件）`, "ok");
-          setTimeout(()=>setStatus("", null), 900);
-          if(adminLesson.value === lessonKey) loadAdminList();
-        }else{
-          throw new Error("すべて失敗しました（サイズ/DBルール/ネットワークを確認）。");
-        }
-
-      }catch(err){
-        setStatus(err?.message || String(err || ""), "err");
-      }
+      setStatus("画像はDBへアップロードしません。GitHubの page-images/{ページキー}/ に配置してください。", "err");
     }
+
+
 
     // =========================
     // Admin: add special card
@@ -3738,7 +3633,7 @@
         const items = ids.map(id => lastRendered.find(x => x.id === id)).filter(Boolean);
 
         for(const it of items){
-          if(it.createdBy !== currentUser.uid){
+          if(it.source !== "github" && it.createdBy !== currentUser.uid){
             throw new Error("連結は「自分が作成したカード」だけ可能です。");
           }
           if(it.type === "special"){
@@ -4267,7 +4162,7 @@
         editErr.classList.add("show");
         return;
       }
-      if(hit.createdBy !== currentUser.uid){
+      if(hit.source !== "github" && hit.createdBy !== currentUser.uid){
         editErr.textContent = "自分が作成したカードだけ編集できます。";
         editErr.classList.add("show");
         return;
@@ -4281,6 +4176,8 @@
         groupKey: adminGroup.value,
         pageKey: adminPage.value || DEFAULT_PAGE_KEY,
         id,
+        source: hit.source || "db",
+        fileName: hit.fileName || "",
         isSpecial: isSp,
         isCombo,
         comboImages: isCombo ? (Array.isArray(hit.images) ? hit.images : []) : []
@@ -4334,14 +4231,22 @@
         const { lessonKey, id } = editTarget;
         const hit = lastRendered.find(x => x.id === id);
         if(!hit) throw new Error("対象が見つかりません。");
-        if(hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ編集できます。");
+        if(hit.source !== "github" && hit.createdBy !== currentUser.uid) throw new Error("自分が作成したカードだけ編集できます。");
 
         const updates = {
           talk: editTalkMarkers,
           overlays: overlaysToSave
         };
 
-        await db.ref(`${pageItemsPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
+        if(editTarget.source === "github"){
+          updates.updatedAt = Date.now();
+          updates.createdAt = hit.createdAt || Date.now();
+          updates.createdBy = hit.createdBy || currentUser.uid;
+          updates.createdByEmail = hit.createdByEmail || (currentUser.email || "");
+          await db.ref(`${pageImageMetaPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${editTarget.fileName}`).update(updates);
+        }else{
+          await db.ref(`${pageItemsPath(editTarget.groupKey || adminGroup.value, lessonKey, editTarget.pageKey || DEFAULT_PAGE_KEY)}/${id}`).update(updates);
+        }
 
         showEditModal(false);
         editTarget = null;
@@ -4361,6 +4266,18 @@
         if(!editTarget) return;
         const { groupKey, lessonKey, pageKey, id } = editTarget;
         showEditModal(false);
+        if(editTarget.source === "github"){
+          await db.ref(`${pageImageMetaPath(groupKey || adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${editTarget.fileName}`).update({
+            hidden: true,
+            updatedAt: Date.now(),
+            updatedBy: currentUser?.uid || ""
+          });
+          editTarget = null;
+          await loadAdminList();
+          setStatus2("非表示にしました ✅", "ok");
+          setTimeout(()=>setStatus2("", null), 900);
+          return;
+        }
         editTarget = null;
         await deleteItem(groupKey || adminGroup.value, lessonKey, pageKey || DEFAULT_PAGE_KEY, id);
       }catch(_){}
@@ -4375,7 +4292,16 @@
       items.forEach((it, idx)=>{
         const ord = (idx + 1) * base;
         it.order = ord;
-        updates[`${pageItemsPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
+        if(it.source === "github"){
+          const metaPath = `${pageImageMetaPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.fileName}`;
+          updates[`${metaPath}/order`] = ord;
+          updates[`${metaPath}/createdAt`] = it.createdAt || Date.now();
+          updates[`${metaPath}/createdBy`] = it.createdBy || (currentUser?.uid || "");
+          updates[`${metaPath}/createdByEmail`] = it.createdByEmail || (currentUser?.email || "");
+          updates[`${metaPath}/hidden`] = false;
+        }else{
+          updates[`${pageItemsPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${it.id}/order`] = ord;
+        }
       });
       return db.ref().update(updates);
     }
