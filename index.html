@@ -1973,8 +1973,6 @@
     let dragOverId = null;
     let dragInsertAfter = false;
     let suppressNextCardClick = false;
-    const imageProbeCache = new Map();
-    const imageDecodeCache = new Map();
 
     // =========================
     // Helpers
@@ -2763,33 +2761,7 @@
     }
 
     async function preloadItemImage(item){
-      if(!item) return;
-      const urls = [];
-      if(isComboItem(item)){
-        urls.push(...(Array.isArray(item.images) ? item.images.filter(Boolean) : []));
-      }else if(!isSpecialItem(item) && item.dataUrl){
-        urls.push(item.dataUrl);
-      }
-      if(!urls.length) return;
-
-      await Promise.all(urls.map((url)=>{
-        const key = String(url || "");
-        if(!key) return Promise.resolve();
-        if(imageDecodeCache.has(key)) return imageDecodeCache.get(key);
-        const task = new Promise((resolve)=>{
-          const img = new Image();
-          img.onload = async ()=>{
-            try{
-              if(typeof img.decode === "function") await img.decode();
-            }catch(_){ }
-            resolve();
-          };
-          img.onerror = ()=> resolve();
-          img.src = key;
-        });
-        imageDecodeCache.set(key, task);
-        return task;
-      }));
+      return;
     }
 
     function animateTranslateStep({fromX, toX, durationMs, onFrame, token}){
@@ -3131,33 +3103,19 @@
     }
 
     async function imageUrlExists(url){
-      const key = String(url || "");
-      if(!key) return false;
-      if(imageProbeCache.has(key)) return imageProbeCache.get(key);
-
-      const task = (async ()=>{
-        try{
-          const res = await fetch(key, { method: "HEAD", cache: "force-cache" });
-          if(res.ok) return true;
-        }catch(_){
-          // ignore and fallback
-        }
-        return new Promise((resolve)=>{
-          const img = new Image();
-          let done = false;
-          const finish = (ok)=>{
-            if(done) return;
-            done = true;
-            resolve(!!ok);
-          };
-          img.onload = ()=> finish(true);
-          img.onerror = ()=> finish(false);
-          img.src = key;
-          setTimeout(()=> finish(false), 350);
-        });
-      })();
-      imageProbeCache.set(key, task);
-      return task;
+      return new Promise((resolve)=>{
+        const img = new Image();
+        let done = false;
+        const finish = (ok)=>{
+          if(done) return;
+          done = true;
+          resolve(!!ok);
+        };
+        img.onload = ()=> finish(true);
+        img.onerror = ()=> finish(false);
+        img.src = url;
+        setTimeout(()=> finish(false), 1200);
+      });
     }
 
     async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false, options = {}){
@@ -3177,55 +3135,78 @@
         const saved = metaMap[id] || {};
         return {
           i, id, saved,
-          order: i * 1000,
+          order: Number(saved.order || (i * 1000)) || (i * 1000),
           hidden: !!saved.hidden
         };
-      });
+      }).sort((a,b)=>(a.order||0)-(b.order||0) || a.i - b.i);
 
-      let missStreak = 0;
-      for(const plan of imagePlans){
-        if(plan.hidden && !includeHidden) continue;
+      const states = new Array(imagePlans.length);
+      let cursor = 0;
+      let emitCursor = 0;
 
-        const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-        let hitUrl = "";
-        for(const url of candidates){
-          if(await imageUrlExists(url)){
-            hitUrl = url;
-            break;
+      const flushReady = ()=>{
+        while(emitCursor < states.length && states[emitCursor] !== undefined){
+          const item = states[emitCursor];
+          if(item){
+            items.push(item);
+            onItem?.(item, items.length - 1);
+            imageById.set(item.id, {
+              id: item.id,
+              url: item.dataUrl,
+              talk: item.talk,
+              overlays: item.overlays || [],
+              hidden: !!item.hidden,
+              order: item.order
+            });
           }
+          emitCursor++;
         }
+      };
 
-        if(!hitUrl){
-          missStreak += 1;
-          if(missStreak >= 8 && plan.i >= 12) break;
-          continue;
+      const workerCount = Math.max(1, Math.min(8, imagePlans.length));
+      const workers = Array.from({ length: workerCount }, async ()=>{
+        while(cursor < imagePlans.length){
+          const idx = cursor++;
+          const plan = imagePlans[idx];
+          if(plan.hidden && !includeHidden){
+            states[idx] = null;
+            flushReady();
+            continue;
+          }
+
+          const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
+          let hitUrl = "";
+          for(const url of candidates){
+            if(await imageUrlExists(url)){
+              hitUrl = url;
+              break;
+            }
+          }
+
+          if(!hitUrl){
+            states[idx] = null;
+            flushReady();
+            continue;
+          }
+
+          states[idx] = {
+            id: plan.id,
+            type: "image",
+            dataUrl: hitUrl,
+            images: [],
+            talk: String(plan.saved.talk || ""),
+            overlays: plan.saved.overlays || [],
+            hidden: plan.hidden,
+            createdAt: 0,
+            order: plan.order,
+            createdBy: "",
+            createdByEmail: ""
+          };
+          flushReady();
         }
-        missStreak = 0;
-
-        const item = {
-          id: plan.id,
-          type: "image",
-          dataUrl: hitUrl,
-          images: [],
-          talk: String(plan.saved.talk || ""),
-          overlays: plan.saved.overlays || [],
-          hidden: plan.hidden,
-          createdAt: 0,
-          order: plan.order,
-          createdBy: "",
-          createdByEmail: ""
-        };
-        items.push(item);
-        onItem?.(item, items.length - 1);
-        imageById.set(item.id, {
-          id: item.id,
-          url: item.dataUrl,
-          talk: item.talk,
-          overlays: item.overlays || [],
-          hidden: !!item.hidden,
-          order: item.order
-        });
-      }
+      });
+      await Promise.all(workers);
+      flushReady();
 
       const comboItems = [];
       Object.entries(comboMap).forEach(([comboId, combo])=>{
@@ -3289,7 +3270,19 @@
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
-        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey, false);
+        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey, false, {
+          onItem: (item)=>{
+            if(isStale()) return;
+            lessonItems.push(item);
+            lessonItems.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+            stageIndexVisibleCount = lessonItems.length;
+            if(!currentItem && lessonItems.length){
+              showOneItemInstant(lessonItems[0]);
+            }else{
+              renderStageIndexBar();
+            }
+          }
+        });
         if(isStale()) return;
         lessonItems = arr;
         currentItem = null;
@@ -3308,14 +3301,7 @@
         const first = lessonItems[0];
         if(isStale()) return;
         stageIndexVisibleCount = lessonItems.length;
-        await preloadItemImage(first);
-        if(isStale()) return;
         showOneItemInstant(first);
-        warmupLessonImagesStaged(lessonItems, {
-          eagerCount: 6,
-          startIndex: 1,
-          isStillValid: ()=> !isStale()
-        });
       }catch(err){
         if(isStale()) return;
         renderStageEmpty("読み込みエラー");
