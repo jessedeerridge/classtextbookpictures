@@ -3186,32 +3186,33 @@
         };
       });
 
-      let discoveredSeq = 0;
       const resolveImagePlan = async (plan)=>{
         if(plan.hidden && !includeHidden) return null;
         const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-        const checks = candidates.map((url, idx)=> (async ()=>{
-          if(!url) return { ok:false, idx, url:"" };
-          const ok = await imageUrlExists(url, 4200, 1);
-          return { ok, idx, url };
-        })());
-        const results = await Promise.all(checks);
-        const hit = results
-          .filter(r => r.ok)
-          .sort((a,b)=>a.idx - b.idx)[0];
-        if(!hit || !hit.url) return null;
-        const fallbackUrls = candidates.filter((u, idx)=> idx !== hit.idx && !!u);
+        let hitUrl = "";
+        const fallbackUrls = [];
+        for(let i = 0; i < candidates.length; i++){
+          const url = candidates[i];
+          if(!url) continue;
+          const ok = await imageUrlExists(url, 2600, 1);
+          if(ok){
+            hitUrl = url;
+            fallbackUrls.push(...candidates.slice(i + 1).filter(Boolean));
+            break;
+          }
+        }
+        if(!hitUrl) return null;
         return {
           id: plan.id,
           type: "image",
-          dataUrl: hit.url,
+          dataUrl: hitUrl,
           fallbackUrls,
           images: [],
           talk: String(plan.saved.talk || ""),
           overlays: plan.saved.overlays || [],
           hidden: plan.hidden,
           createdAt: 0,
-          order: ++discoveredSeq,
+          order: plan.i,
           createdBy: "",
           createdByEmail: ""
         };
@@ -3232,19 +3233,16 @@
         });
       };
 
-      let cursor = 0;
-      const workerCount = Math.max(6, Math.min(16, imagePlans.length));
-      const workers = Array.from({ length: workerCount }, async ()=>{
-        while(cursor < imagePlans.length){
-          const idx = cursor++;
-          const plan = imagePlans[idx];
+      for(const plan of imagePlans){
+        try{
           const item = await resolveImagePlan(plan);
           if(item){
             emitImageItem(item);
           }
+        }catch(_){
+          // 1件失敗しても後続読み込みを継続
         }
-      });
-      await Promise.all(workers);
+      }
 
       const comboItems = [];
       Object.entries(comboMap).forEach(([comboId, combo])=>{
