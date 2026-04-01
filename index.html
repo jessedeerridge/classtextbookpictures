@@ -954,7 +954,7 @@
     }
     .paper[contenteditable="true"]{
       outline:none;
-      min-height: 180px;
+      min-height: 320px;
     }
     .paper[contenteditable="true"]:focus{
       box-shadow: 0 0 0 3px rgba(79,124,255,.18);
@@ -1400,19 +1400,17 @@
         <div class="panelHead">
           <div class="panelTitle">登録先（共通）</div>
         </div>
-        <div class="panelBody" style="grid-template-columns: 1fr 1fr; align-items:end;">
+        <div class="panelBody" style="grid-template-columns: repeat(3, minmax(0, 1fr)); align-items:end;">
           <div class="field">
             <div class="label">登録するクラス（Ⅰ〜Ⅳ）</div>
             <select class="input" id="adminGroup"></select>
           </div>
           <div class="field">
             <div class="label">登録する課</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <select class="input" id="adminLesson" style="flex:1;min-width:220px;"></select>
+            <select class="input" id="adminLesson" style="min-width:180px;"></select>
+            <div class="retired" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="lessonLabelInput" placeholder="選択中の課の名前" style="flex:1;min-width:180px;" />
               <button class="btn small" id="btnRenameLesson" type="button">名前変更</button>
-            </div>
-            <div class="retired" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="newLessonLabel" placeholder="例：L1 / あいさつ / まとめ" style="flex:1;min-width:180px;" />
               <button class="btn small primary" id="btnAddLesson" type="button">課を追加</button>
             </div>
@@ -1420,12 +1418,10 @@
           </div>
           <div class="field">
             <div class="label">登録するページ分岐</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <select class="input" id="adminPage" style="flex:1;min-width:220px;"></select>
+            <select class="input" id="adminPage" style="min-width:180px;"></select>
+            <div class="retired" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="pageLabelInput" placeholder="選択中ページの表示名" style="flex:1;min-width:180px;" />
               <button class="btn small" id="btnRenamePage" type="button">名前変更</button>
-            </div>
-            <div class="retired" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
               <input class="input" id="newPageLabel" placeholder="例：A / B / 発展" style="flex:1;min-width:180px;" />
               <button class="btn small primary" id="btnAddPage" type="button">分岐追加</button>
               <button class="btn small danger" id="btnDeletePage" type="button">分岐削除</button>
@@ -4140,6 +4136,16 @@
       }catch(_){}
     }
 
+    function closeEditModalAutoSave(){
+      if(!editTarget){
+        showEditModal(false);
+        dragState = null;
+        return;
+      }
+      saveEditedAll();
+      dragState = null;
+    }
+
     // =========================
     // ✅ 並び替え：ドラッグ&ドロップで order を再採番して保存
     // =========================
@@ -4538,8 +4544,8 @@
       clearDropHints();
     });
 
-    btnCloseEdit.addEventListener("click", ()=>{ showEditModal(false); editTarget=null; dragState=null; });
-    editModal.addEventListener("click", (e)=>{ if(e.target===editModal) { showEditModal(false); editTarget=null; dragState=null; } });
+    btnCloseEdit.addEventListener("click", closeEditModalAutoSave);
+    editModal.addEventListener("click", (e)=>{ if(e.target===editModal) closeEditModalAutoSave(); });
 
     tabTalk.addEventListener("click", ()=>setEditTab("talk"));
     tabImgText.addEventListener("click", ()=>{
