@@ -3088,13 +3088,10 @@
       const className = String(group?.label || "").trim();
       const safePageLabel = String(pageLabel || "").trim();
       const base = `${className}${safePageLabel}(${index})`;
-      const exts = ["jpg","jpeg","png","webp"];
-      const urls = [];
-      for(const ext of exts){
-        urls.push(`${base}.${ext}`);
-        urls.push(`${className}/${base}.${ext}`);
-      }
-      return urls;
+      return [
+        `${base}.jpg`,
+        `${className}/${base}.jpg`
+      ];
     }
 
     async function imageUrlExists(url){
@@ -3108,12 +3105,12 @@
         };
         img.onload = ()=> finish(true);
         img.onerror = ()=> finish(false);
-        img.src = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
-        setTimeout(()=> finish(false), 2000);
+        img.src = url;
+        setTimeout(()=> finish(false), 1200);
       });
     }
 
-    async function discoverPageImageItems(groupKey, lessonKey, pageKey){
+    async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false){
       const pageLabel = (lessonPages.find(p => p.key === pageKey)?.label) || "";
       const [metaSnap, comboSnap] = await Promise.all([
         db.ref(pageImageMetaPath(groupKey, lessonKey, pageKey)).get(),
@@ -3124,7 +3121,8 @@
       const items = [];
       const imageById = new Map();
 
-      for(let i=1; i<=40; i++){
+      const discoveries = await Promise.all(Array.from({ length: 40 }, async (_, idxRaw)=>{
+        const i = idxRaw + 1;
         const id = `img_${sanitizeId(groupKey)}_${sanitizeId(lessonKey)}_${sanitizeId(pageKey)}_${i}`;
         const candidates = buildImageCandidates(groupKey, pageLabel, i);
         let hitUrl = "";
@@ -3134,32 +3132,43 @@
             break;
           }
         }
-        if(!hitUrl) continue;
+        if(!hitUrl) return null;
 
         const saved = metaMap[id] || {};
-        items.push({
+        const hidden = !!saved.hidden;
+        if(hidden && !includeHidden) return null;
+        return {
           id,
           type: "image",
           dataUrl: hitUrl,
           images: [],
           talk: String(saved.talk || ""),
           overlays: saved.overlays || [],
+          hidden,
           createdAt: 0,
           order: Number(saved.order || (i * 1000)) || (i * 1000),
           createdBy: "",
           createdByEmail: ""
-        });
-        imageById.set(id, {
-          id,
-          url: hitUrl,
-          talk: String(saved.talk || ""),
-          overlays: saved.overlays || [],
-          order: Number(saved.order || (i * 1000)) || (i * 1000)
+        };
+      }));
+
+      for(const item of discoveries){
+        if(!item) continue;
+        items.push(item);
+        imageById.set(item.id, {
+          id: item.id,
+          url: item.dataUrl,
+          talk: item.talk,
+          overlays: item.overlays || [],
+          hidden: !!item.hidden,
+          order: item.order
         });
       }
 
       const comboItems = [];
       Object.entries(comboMap).forEach(([comboId, combo])=>{
+        const hidden = !!combo?.hidden;
+        if(hidden && !includeHidden) return;
         const imageIds = Array.isArray(combo?.imageIds) ? combo.imageIds : [];
         const parts = imageIds.map(id => imageById.get(String(id))).filter(Boolean);
         if(parts.length < 2) return;
@@ -3171,6 +3180,7 @@
           images: parts.map(p => p.url),
           talk: String(combo?.talk || ""),
           overlays: [],
+          hidden,
           createdAt: 0,
           order: Number(combo?.order || 0) || 0,
           createdBy: "",
@@ -3186,6 +3196,7 @@
         images: [],
         talk: v.talk,
         overlays: v.overlays,
+        hidden: !!v.hidden,
         createdAt: 0,
         order: v.order,
         createdBy: "",
@@ -3214,7 +3225,7 @@
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
-        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey);
+        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey, false);
         if(isStale()) return;
         if(isStale()) return;
         lessonItems = arr;
@@ -3283,8 +3294,8 @@
         const badge = isSp
           ? `SPECIAL / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`
           : isCombo
-            ? `COMBO:${escapeHtml(String((it.images||[]).length))} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`
-            : `文字:${overlayCount} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))}`;
+            ? `COMBO:${escapeHtml(String((it.images||[]).length))} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))} / ${it.hidden ? "非表示" : "表示"}`
+            : `文字:${overlayCount} / 会話:${escapeHtml((stripMarkers(it.talk||"").trim() ? "有" : "無"))} / ${it.hidden ? "非表示" : "表示"}`;
 
         const selClass = selectedIds.has(it.id) ? "selected" : "";
         const selModeClass = selectMode ? "selMode" : "";
@@ -3307,6 +3318,7 @@
                 <span>会話：${escapeHtml(talkPlainPreview(it.talk))}</span>
               </div>
               <div class="actions">
+                <button class="btn small ${it.hidden ? "" : "primary"}" data-action="toggle-vis">${it.hidden ? "表示にする" : "非表示にする"}</button>
                 ${canDelete ? `<button class="btn small danger" data-action="del">削除</button>` : ""}
               </div>
             </div>
@@ -3333,7 +3345,7 @@
 
         setStatus2("読み込み中...", null);
         lessonPages = await loadLessonPages(groupKey, lessonKey);
-        const arr = await discoverPageImageItems(groupKey, lessonKey, pageKey);
+        const arr = await discoverPageImageItems(groupKey, lessonKey, pageKey, true);
         renderAdminList(arr);
 
         setStatus2(`OK（${arr.length}件）`, "ok");
@@ -3545,6 +3557,34 @@
         loadAdminList();
       }catch(err){
         setStatus2(err?.message || String(err || ""), "err");
+      }
+    }
+
+    async function toggleVisibility(groupKey, lessonKey, pageKey, item){
+      try{
+        if(!db) throw new Error("Firebaseが初期化できていません。");
+        if(!item) throw new Error("対象が見つかりません。");
+        const nextHidden = !item.hidden;
+        if(item.type === "combo"){
+          const comboId = String(item.comboId || item.id || "").replace(/^combo_/, "");
+          if(!comboId) throw new Error("連結カードIDが不正です。");
+          await db.ref(`${pageCombosPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${comboId}`).update({
+            hidden: nextHidden,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP,
+            updatedBy: currentUser?.uid || ""
+          });
+        }else{
+          await db.ref(`${pageImageMetaPath(groupKey, lessonKey, pageKey || DEFAULT_PAGE_KEY)}/${item.id}`).update({
+            hidden: nextHidden,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP,
+            updatedBy: currentUser?.uid || ""
+          });
+        }
+        await loadAdminList();
+        setStatus2(nextHidden ? "非表示にしました ✅" : "表示にしました ✅", "ok");
+        setTimeout(()=>setStatus2("", null), 900);
+      }catch(err){
+        setStatus2(err?.message || String(err||""), "err");
       }
     }
 
@@ -4480,6 +4520,17 @@
 
       const lessonKey = adminLesson.value;
       const pageKey = adminPage.value || DEFAULT_PAGE_KEY;
+
+      const toggleBtn = e.target.closest('[data-action="toggle-vis"]');
+      if(toggleBtn){
+        const card = toggleBtn.closest(".card");
+        const id = card?.getAttribute("data-id") || "";
+        const hit = lastRendered.find(x => x.id === id);
+        if(hit) toggleVisibility(adminGroup.value, lessonKey, pageKey, hit);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
 
       const delBtn = e.target.closest('[data-action="del"]');
       if(delBtn){
