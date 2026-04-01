@@ -589,7 +589,7 @@
       display:flex;
       gap:8px;
       flex-wrap:nowrap;
-      justify-content:flex-start;
+      justify-content:center;
       align-items:center;
       overflow-x:auto;
       scrollbar-width: thin;
@@ -2168,7 +2168,7 @@
       const lessonButtons = selectedGroup ? buildLessonButtonsForGroup(currentGroupKey) : "";
 
       lessonRow.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:nowrap;align-items:center;justify-content:flex-start;white-space:nowrap;">
+        <div style="display:flex;gap:8px;flex-wrap:nowrap;align-items:center;justify-content:center;white-space:nowrap;">
           ${selectedGroup
             ? `<button class="lessonBtn active" data-group="${escapeHtml(selectedGroup.key)}" aria-label="選択中のクラス">${escapeHtml(selectedGroup.label)}</button>`
             : buildGroupButtons()}
