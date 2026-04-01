@@ -3198,15 +3198,28 @@
           const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
           let hitUrl = "";
           const fallbackUrls = [];
-          for(let c = 0; c < candidates.length; c++){
-            const url = candidates[c];
-            if(!url) continue;
-            if(await imageUrlExists(url)){
-              hitUrl = url;
-              if(c + 1 < candidates.length){
-                fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
+          // 先頭6枚は必ず存在する前提で、存在チェック待ちを省略して即時反映
+          // （表示を最優先。画質調整は元画像側の最適化で対応）
+          if(plan.i <= 6){
+            hitUrl = candidates.find(Boolean) || "";
+            if(hitUrl){
+              const hitIdx = candidates.indexOf(hitUrl);
+              if(hitIdx >= 0 && hitIdx + 1 < candidates.length){
+                fallbackUrls.push(...candidates.slice(hitIdx + 1).filter(Boolean));
               }
-              break;
+            }
+          }
+          if(!hitUrl){
+            for(let c = 0; c < candidates.length; c++){
+              const url = candidates[c];
+              if(!url) continue;
+              if(await imageUrlExists(url)){
+                hitUrl = url;
+                if(c + 1 < candidates.length){
+                  fallbackUrls.push(...candidates.slice(c + 1).filter(Boolean));
+                }
+                break;
+              }
             }
           }
           if(!hitUrl){
