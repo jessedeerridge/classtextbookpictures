@@ -3110,7 +3110,8 @@
       });
     }
 
-    async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false){
+    async function discoverPageImageItems(groupKey, lessonKey, pageKey, includeHidden = false, options = {}){
+      const onItem = typeof options.onItem === "function" ? options.onItem : null;
       const pageLabel = (lessonPages.find(p => p.key === pageKey)?.label) || "";
       const [metaSnap, comboSnap] = await Promise.all([
         db.ref(pageImageMetaPath(groupKey, lessonKey, pageKey)).get(),
@@ -3120,11 +3121,20 @@
       const comboMap = comboSnap.val() || {};
       const items = [];
       const imageById = new Map();
-
-      const discoveries = await Promise.all(Array.from({ length: 40 }, async (_, idxRaw)=>{
+      const imagePlans = Array.from({ length: 40 }, (_, idxRaw)=>{
         const i = idxRaw + 1;
         const id = `img_${sanitizeId(groupKey)}_${sanitizeId(lessonKey)}_${sanitizeId(pageKey)}_${i}`;
-        const candidates = buildImageCandidates(groupKey, pageLabel, i);
+        const saved = metaMap[id] || {};
+        return {
+          i, id, saved,
+          order: Number(saved.order || (i * 1000)) || (i * 1000),
+          hidden: !!saved.hidden
+        };
+      }).sort((a,b)=>(a.order||0)-(b.order||0) || a.i - b.i);
+
+      for(const plan of imagePlans){
+        if(plan.hidden && !includeHidden) continue;
+        const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
         let hitUrl = "";
         for(const url of candidates){
           if(await imageUrlExists(url)){
@@ -3132,29 +3142,23 @@
             break;
           }
         }
-        if(!hitUrl) return null;
+        if(!hitUrl) continue;
 
-        const saved = metaMap[id] || {};
-        const hidden = !!saved.hidden;
-        if(hidden && !includeHidden) return null;
-        return {
-          id,
+        const item = {
+          id: plan.id,
           type: "image",
           dataUrl: hitUrl,
           images: [],
-          talk: String(saved.talk || ""),
-          overlays: saved.overlays || [],
-          hidden,
+          talk: String(plan.saved.talk || ""),
+          overlays: plan.saved.overlays || [],
+          hidden: plan.hidden,
           createdAt: 0,
-          order: Number(saved.order || (i * 1000)) || (i * 1000),
+          order: plan.order,
           createdBy: "",
           createdByEmail: ""
         };
-      }));
-
-      for(const item of discoveries){
-        if(!item) continue;
         items.push(item);
+        onItem?.(item, items.length - 1);
         imageById.set(item.id, {
           id: item.id,
           url: item.dataUrl,
@@ -3187,6 +3191,7 @@
           createdByEmail: "",
           comboId
         });
+        onItem?.(comboItems[comboItems.length - 1], items.length + comboItems.length - 1);
       });
 
       const singleItems = [...imageById.values()].map(v=>({
@@ -3212,6 +3217,7 @@
       const isStale = ()=> requestId !== lessonLoadRequestId;
       try{
         if(!db) return;
+        renderStageEmpty("", "", true);
         lessonItems = [];
         stageIndexVisibleCount = 0;
         renderStageIndexBar();
@@ -3225,8 +3231,19 @@
         saveLastLesson(currentGroupKey, currentLessonKey, currentPageKey);
         renderStageBranchBar();
 
-        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey, false);
-        if(isStale()) return;
+        const arr = await discoverPageImageItems(currentGroupKey, lessonKey, currentPageKey, false, {
+          onItem: (item)=>{
+            if(isStale()) return;
+            lessonItems.push(item);
+            lessonItems.sort((a,b)=>(a.order||0)-(b.order||0) || String(a.id).localeCompare(String(b.id)));
+            stageIndexVisibleCount = lessonItems.length;
+            if(!currentItem && lessonItems.length){
+              showOneItemInstant(lessonItems[0]);
+            }else{
+              renderStageIndexBar();
+            }
+          }
+        });
         if(isStale()) return;
         lessonItems = arr;
         currentItem = null;
