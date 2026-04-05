@@ -2584,9 +2584,29 @@
         return;
       }
 
-      slotEl.innerHTML = item?.dataUrl
-        ? `<div class="slotFrame"><img src="${escapeHtml(item.dataUrl)}" alt=""></div>`
-        : "";
+      if(item?.dataUrl){
+        const fallbacks = Array.isArray(item.fallbackUrls) ? item.fallbackUrls.filter(Boolean) : [];
+        const fallbackAttr = escapeHtml(JSON.stringify(fallbacks));
+        slotEl.innerHTML = `<div class="slotFrame"><img src="${escapeHtml(item.dataUrl)}" data-fallback='${fallbackAttr}' alt=""></div>`;
+        const imgEl = slotEl.querySelector("img[data-fallback]");
+        if(imgEl){
+          imgEl.addEventListener("error", ()=>{
+            const raw = imgEl.dataset.fallback || "[]";
+            let urls = [];
+            try{ urls = JSON.parse(raw); }catch(_){ urls = []; }
+            const next = Array.isArray(urls) ? urls.shift() : "";
+            if(!next){
+              imgEl.removeAttribute("data-fallback");
+              return;
+            }
+            imgEl.dataset.fallback = JSON.stringify(urls);
+            imgEl.src = next;
+          }, { once:false });
+        }
+        return;
+      }
+
+      slotEl.innerHTML = "";
     }
 
     function setSlotX(el, percent){
@@ -3200,6 +3220,7 @@
             imageById.set(item.id, {
               id: item.id,
               url: item.dataUrl,
+              fallbackUrls: item.fallbackUrls || [],
               talk: item.talk,
               overlays: item.overlays || [],
               hidden: !!item.hidden,
@@ -3222,14 +3243,7 @@
           }
 
           const candidates = buildImageCandidates(groupKey, pageLabel, plan.i);
-          let hitUrl = "";
-          for(const url of candidates){
-            if(await imageUrlExists(url)){
-              hitUrl = url;
-              break;
-            }
-          }
-
+          const hitUrl = candidates[0] || "";
           if(!hitUrl){
             states[idx] = null;
             flushReady();
@@ -3240,6 +3254,7 @@
             id: plan.id,
             type: "image",
             dataUrl: hitUrl,
+            fallbackUrls: candidates.slice(1),
             images: [],
             talk: String(plan.saved.talk || ""),
             overlays: plan.saved.overlays || [],
@@ -3284,6 +3299,7 @@
         id: v.id,
         type: "image",
         dataUrl: v.url,
+        fallbackUrls: Array.isArray(v.fallbackUrls) ? v.fallbackUrls : [],
         images: [],
         talk: v.talk,
         overlays: v.overlays,
